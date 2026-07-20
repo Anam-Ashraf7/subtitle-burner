@@ -274,7 +274,7 @@ app.post('/export', (req, res) => {
 
 // Cap output height to keep x264 memory low on small hosts (Render free = 512MB).
 // Every segment is produced at these same dims so the -c copy concat still works.
-const MAX_HEIGHT = parseInt(process.env.MAX_HEIGHT || '720', 10);
+const MAX_HEIGHT = parseInt(process.env.MAX_HEIGHT || '1080', 10);
 const even = (n) => (n % 2 ? n - 1 : n); // x264 requires even dimensions
 function outputDims(w, h) {
   if (h <= MAX_HEIGHT) return { W: even(w), H: even(h) };
