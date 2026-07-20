@@ -281,7 +281,11 @@ function outputDims(w, h) {
   const scale = MAX_HEIGHT / h;
   return { W: even(Math.round(w * scale)), H: MAX_HEIGHT };
 }
-const LOWMEM = ['-threads', '1']; // single-threaded encode → much lower peak RAM
+// Encode tuning (env-overridable). Threads 0 = use all cores. On a tiny 512MB
+// host, set FFMPEG_THREADS=1 to cap memory; on a multi-core box leave it at 0.
+const THREADS = ['-threads', process.env.FFMPEG_THREADS || '0'];
+const X264_PRESET = process.env.X264_PRESET || 'veryfast'; // try 'superfast'/'ultrafast' for speed
+const ENC = ['-c:v', 'libx264', '-preset', X264_PRESET];
 
 async function runExportJob(jobId, s, { intro = [], subs = [], outro = [] }) {
   const job = jobs.get(jobId);
@@ -306,8 +310,8 @@ async function runExportJob(jobId, s, { intro = [], subs = [], outro = [] }) {
       '-f', 'lavfi', '-i', `color=c=black:s=${w}x${h}:r=${fps}:d=${dur}`,
       '-f', 'lavfi', '-i', `anullsrc=r=44100:cl=stereo`,
       '-vf', `subtitles='${scrArg}':fontsdir='${FONTS_ARG}'`,
-      ...LOWMEM,
-      '-t', String(dur), '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-preset', 'veryfast',
+      ...THREADS,
+      '-t', String(dur), '-pix_fmt', 'yuv420p', ...ENC,
       '-c:a', 'aac', '-ar', '44100', '-r', String(fps), '-y', out,
     ], (t) => setPct(Math.min(t, dur)));
     processed += dur;
@@ -324,12 +328,15 @@ async function runExportJob(jobId, s, { intro = [], subs = [], outro = [] }) {
   fs.writeFileSync(assPath, buildAss(subs, w, h));
   const mainOut = path.join(dir, 'main.mp4');
   const assArg = assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
+  // Only rescale when the source is actually bigger than target — skips a full
+  // per-frame scale pass (and its CPU cost) for videos already at/under MAX_HEIGHT.
+  const needScale = s.meta.height !== h || s.meta.width !== w;
+  const scalePre = needScale ? `scale=${w}:${h}:flags=bicubic,setsar=1,` : '';
   await run(ffmpegPath, [
     ...PROG, '-i', s.videoPath,
-    // scale to the reduced output size FIRST, then burn subs at that size (ASS PlayRes matches)
-    '-vf', `scale=${w}:${h}:flags=bicubic,setsar=1,subtitles='${assArg}':fontsdir='${FONTS_ARG}'`,
-    ...LOWMEM,
-    '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-preset', 'veryfast',
+    '-vf', `${scalePre}subtitles='${assArg}':fontsdir='${FONTS_ARG}'`,
+    ...THREADS,
+    '-pix_fmt', 'yuv420p', ...ENC,
     '-c:a', 'aac', '-ar', '44100', '-r', String(fps), '-y', mainOut,
   ], (t) => setPct(Math.min(t, videoDur || t)));
   processed += videoDur || 0;
