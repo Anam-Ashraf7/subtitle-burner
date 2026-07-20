@@ -183,7 +183,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
-Style: Def,Arial,${fontSize},&H00FFFFFF,&H00000000,&H80000000,-1,1,3,1,2,60,60,${margin}
+Style: Def,DejaVu Sans,${fontSize},&H00FFFFFF,&H00000000,&H80000000,-1,1,3,1,2,60,60,${margin}
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -219,8 +219,14 @@ function run(bin, args, onProgress) {
 }
 const PROG = ['-progress', 'pipe:1', '-nostats']; // machine-readable progress on stdout
 
-// black-screen segment with centered wrapped text
-function drawtextFilter(text, w, h) {
+// Bundled font so libass renders text even on minimal Linux hosts (Render) with no system fonts.
+const FONTS_DIR = path.join(__dirname, 'assets', 'fonts');
+const escFilterPath = (p) => p.replace(/\\/g, '/').replace(/:/g, '\\:');
+const FONTS_ARG = escFilterPath(FONTS_DIR);
+
+// Centered black-screen text as an ASS subtitle (uses libass — works everywhere,
+// unlike the drawtext filter which is missing from many static ffmpeg builds).
+function buildScreenAss(text, w, h, dur) {
   const fontSize = Math.round(h * 0.06);
   // wrap ~28 chars per line
   const words = String(text).split(/\s+/);
@@ -231,12 +237,22 @@ function drawtextFilter(text, w, h) {
     else cur += ' ' + word;
   }
   if (cur.trim()) lines.push(cur.trim());
-  const esc = (t) => t.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "’").replace(/%/g, '\\%');
-  const n = lines.length;
-  return lines.map((ln, i) => {
-    const yoff = (i - (n - 1) / 2) * fontSize * 1.4;
-    return `drawtext=text='${esc(ln)}':fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=(h-text_h)/2+${Math.round(yoff)}`;
-  }).join(',');
+  const body = lines.join('\n'); // assEscape turns \n into \N
+  const head = `[Script Info]
+ScriptType: v4.00+
+PlayResX: ${w}
+PlayResY: ${h}
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
+Style: Scr,DejaVu Sans,${fontSize},&H00FFFFFF,&H00000000,&H00000000,-1,1,0,0,5,40,40,40
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,${assTime(0)},${assTime(dur)},Scr,,0,0,0,,${assEscape(body)}
+`;
+  return head;
 }
 
 const jobs = new Map(); // jobId -> { percent, stage, done, error, file, dir }
@@ -270,11 +286,14 @@ async function runExportJob(jobId, s, { intro = [], subs = [], outro = [] }) {
     const out = path.join(dir, `${sc.id}.mp4`);
     const dur = durOf(sc);
     job.stage = label;
+    const scrAss = path.join(dir, `${sc.id}.ass`);
+    fs.writeFileSync(scrAss, buildScreenAss(sc.text, w, h, dur));
+    const scrArg = scrAss.replace(/\\/g, '/').replace(/:/g, '\\:');
     await run(ffmpegPath, [
       ...PROG,
       '-f', 'lavfi', '-i', `color=c=black:s=${w}x${h}:r=${fps}:d=${dur}`,
       '-f', 'lavfi', '-i', `anullsrc=r=44100:cl=stereo`,
-      '-vf', drawtextFilter(sc.text, w, h),
+      '-vf', `subtitles='${scrArg}':fontsdir='${FONTS_ARG}'`,
       '-t', String(dur), '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-preset', 'veryfast',
       '-c:a', 'aac', '-ar', '44100', '-r', String(fps), '-y', out,
     ], (t) => setPct(Math.min(t, dur)));
@@ -294,7 +313,7 @@ async function runExportJob(jobId, s, { intro = [], subs = [], outro = [] }) {
   const assArg = assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
   await run(ffmpegPath, [
     ...PROG, '-i', s.videoPath,
-    '-vf', `subtitles='${assArg}'`,
+    '-vf', `subtitles='${assArg}':fontsdir='${FONTS_ARG}'`,
     '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-preset', 'veryfast',
     '-c:a', 'aac', '-ar', '44100', '-r', String(fps), '-y', mainOut,
   ], (t) => setPct(Math.min(t, videoDur || t)));
