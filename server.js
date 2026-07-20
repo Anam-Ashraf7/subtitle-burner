@@ -272,25 +272,31 @@ app.post('/export', (req, res) => {
   });
 });
 
-// Cap output height to keep x264 memory low on small hosts (Render free = 512MB).
-// Every segment is produced at these same dims so the -c copy concat still works.
-const MAX_HEIGHT = parseInt(process.env.MAX_HEIGHT || '1080', 10);
-const even = (n) => (n % 2 ? n - 1 : n); // x264 requires even dimensions
-function outputDims(w, h) {
-  if (h <= MAX_HEIGHT) return { W: even(w), H: even(h) };
-  const scale = MAX_HEIGHT / h;
-  return { W: even(Math.round(w * scale)), H: MAX_HEIGHT };
-}
-// Encode tuning (env-overridable). Threads 0 = use all cores. On a tiny 512MB
-// host, set FFMPEG_THREADS=1 to cap memory; on a multi-core box leave it at 0.
+// Defaults (env-overridable). Per-export the UI can override preset/crf/maxHeight.
+const DEFAULT_MAX_HEIGHT = parseInt(process.env.MAX_HEIGHT || '1080', 10);
+const DEFAULT_PRESET = process.env.X264_PRESET || 'ultrafast'; // fastest CPU encode
+const DEFAULT_CRF = parseInt(process.env.X264_CRF || '23', 10); // lower = better quality/bigger
+// Threads 0 = all cores. Set FFMPEG_THREADS=1 on a tiny 512MB host to cap RAM.
 const THREADS = ['-threads', process.env.FFMPEG_THREADS || '0'];
-const X264_PRESET = process.env.X264_PRESET || 'veryfast'; // try 'superfast'/'ultrafast' for speed
-const ENC = ['-c:v', 'libx264', '-preset', X264_PRESET];
 
-async function runExportJob(jobId, s, { intro = [], subs = [], outro = [] }) {
+const PRESETS = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow'];
+const HEIGHTS = [480, 720, 1080, 1440, 2160];
+const even = (n) => (n % 2 ? n - 1 : n); // x264 requires even dimensions
+function outputDims(w, h, maxHeight) {
+  if (h <= maxHeight) return { W: even(w), H: even(h) };
+  const scale = maxHeight / h;
+  return { W: even(Math.round(w * scale)), H: maxHeight };
+}
+
+async function runExportJob(jobId, s, { intro = [], subs = [], outro = [], preset, crf, maxHeight }) {
   const job = jobs.get(jobId);
   const { fps, duration: videoDur } = s.meta;
-  const { W: w, H: h } = outputDims(s.meta.width, s.meta.height); // w,h are now OUTPUT dims
+  // per-export quality controls, validated against allowlists
+  const usePreset = PRESETS.includes(preset) ? preset : DEFAULT_PRESET;
+  const useCrf = Number.isFinite(+crf) ? Math.min(35, Math.max(14, Math.round(+crf))) : DEFAULT_CRF;
+  const useMaxH = HEIGHTS.includes(+maxHeight) ? +maxHeight : DEFAULT_MAX_HEIGHT;
+  const enc = ['-c:v', 'libx264', '-preset', usePreset, '-crf', String(useCrf)];
+  const { W: w, H: h } = outputDims(s.meta.width, s.meta.height, useMaxH); // OUTPUT dims
   const dir = fs.mkdtempSync(path.join(WORK, 'exp-'));
   job.dir = dir;
   const durOf = (sc) => Math.max(0.3, Number(sc.duration) || autoDuration(sc.text));
@@ -311,7 +317,7 @@ async function runExportJob(jobId, s, { intro = [], subs = [], outro = [] }) {
       '-f', 'lavfi', '-i', `anullsrc=r=44100:cl=stereo`,
       '-vf', `subtitles='${scrArg}':fontsdir='${FONTS_ARG}'`,
       ...THREADS,
-      '-t', String(dur), '-pix_fmt', 'yuv420p', ...ENC,
+      '-t', String(dur), '-pix_fmt', 'yuv420p', ...enc,
       '-c:a', 'aac', '-ar', '44100', '-r', String(fps), '-y', out,
     ], (t) => setPct(Math.min(t, dur)));
     processed += dur;
@@ -336,7 +342,7 @@ async function runExportJob(jobId, s, { intro = [], subs = [], outro = [] }) {
     ...PROG, '-i', s.videoPath,
     '-vf', `${scalePre}subtitles='${assArg}':fontsdir='${FONTS_ARG}'`,
     ...THREADS,
-    '-pix_fmt', 'yuv420p', ...ENC,
+    '-pix_fmt', 'yuv420p', ...enc,
     '-c:a', 'aac', '-ar', '44100', '-r', String(fps), '-y', mainOut,
   ], (t) => setPct(Math.min(t, videoDur || t)));
   processed += videoDur || 0;

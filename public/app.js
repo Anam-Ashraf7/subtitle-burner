@@ -13,23 +13,53 @@ function refreshLoad() {
 videoInput.addEventListener('change', refreshLoad);
 xlsxInput.addEventListener('change', refreshLoad);
 
-loadBtn.addEventListener('click', async () => {
+loadBtn.addEventListener('click', () => {
   const fd = new FormData();
   fd.append('video', videoInput.files[0]);
   fd.append('xlsx', xlsxInput.files[0]);
   loadBtn.disabled = true;
-  setMsg('#uploadMsg', 'Uploading & parsing…', '');
-  try {
-    const r = await fetch('/upload', { method: 'POST', body: fd });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || 'upload failed');
-    Object.assign(state, data);
-    setMsg('#uploadMsg', `Loaded ${state.subs.length} subtitles, ${state.intro.length} intro & ${state.outro.length} outro screens.`, 'ok');
-    initEditor();
-  } catch (e) {
-    setMsg('#uploadMsg', e.message, 'err');
+  setMsg('#uploadMsg', '', '');
+  $('#uploadProgress').hidden = false;
+  const bar = $('#uploadBar');
+  bar.classList.remove('indeterminate');
+  bar.style.width = '0%';
+  $('#uploadStage').innerHTML = '<span class="spinner"></span> Uploading…';
+  $('#uploadPct').textContent = '0%';
+
+  // XHR so we can show real upload progress (important for large videos)
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/upload');
+  xhr.upload.onprogress = (e) => {
+    if (!e.lengthComputable) return;
+    const pct = Math.round((e.loaded / e.total) * 100);
+    bar.style.width = pct + '%';
+    $('#uploadPct').textContent = pct + '%';
+    if (pct >= 100) {
+      // upload done; server is now parsing xlsx + probing video
+      bar.classList.add('indeterminate');
+      $('#uploadStage').innerHTML = '<span class="spinner"></span> Parsing & analyzing…';
+      $('#uploadPct').textContent = '';
+    }
+  };
+  xhr.onload = () => {
+    $('#uploadProgress').hidden = true;
+    let data = {};
+    try { data = JSON.parse(xhr.responseText); } catch {}
+    if (xhr.status >= 200 && xhr.status < 300) {
+      Object.assign(state, data);
+      setMsg('#uploadMsg', `Loaded ${state.subs.length} subtitles, ${state.intro.length} intro & ${state.outro.length} outro screens.`, 'ok');
+      initEditor();
+    } else {
+      setMsg('#uploadMsg', data.error || 'upload failed', 'err');
+      loadBtn.disabled = false;
+    }
+  };
+  xhr.onerror = () => {
+    $('#uploadProgress').hidden = true;
+    setMsg('#uploadMsg', 'upload failed (network error)', 'err');
     loadBtn.disabled = false;
-  }
+  };
+  xhr.send(fd);
 });
 
 function setMsg(sel, text, cls) {
@@ -198,9 +228,11 @@ $('#exportBtn').addEventListener('click', async () => {
   $('#progressWrap').hidden = false;
   setProgress(0, 'Starting…');
   try {
+    const qual = { fast: { preset: 'ultrafast', crf: 26 }, balanced: { preset: 'veryfast', crf: 23 }, high: { preset: 'medium', crf: 20 } }[$('#qualitySel').value];
+    const maxHeight = parseInt($('#resSel').value, 10);
     const r = await fetch('/export', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: state.id, intro: state.intro, subs: state.subs, outro: state.outro }),
+      body: JSON.stringify({ id: state.id, intro: state.intro, subs: state.subs, outro: state.outro, ...qual, maxHeight }),
     });
     if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'export failed'); }
     const { jobId } = await r.json();

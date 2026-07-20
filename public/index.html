@@ -26,6 +26,10 @@
     </label>
     <button id="loadBtn" disabled>Load</button>
   </div>
+  <div id="uploadProgress" class="progress-wrap" hidden>
+    <div class="progress-track"><div id="uploadBar" class="progress-bar"></div></div>
+    <div class="progress-label"><span id="uploadStage"><span class="spinner"></span> Uploading…</span><span id="uploadPct">0%</span></div>
+  </div>
   <div id="uploadMsg" class="msg"></div>
 </section>
 
@@ -39,6 +43,21 @@
     <div class="controls">
       <button id="playFull">▶ Preview full (intro→video→outro)</button>
       <button id="stopPreview" hidden>■ Stop preview</button>
+      <label class="sel">Quality
+        <select id="qualitySel">
+          <option value="fast">Fastest (lower quality)</option>
+          <option value="balanced" selected>Balanced</option>
+          <option value="high">High quality (slower)</option>
+        </select>
+      </label>
+      <label class="sel">Resolution
+        <select id="resSel">
+          <option value="480">480p</option>
+          <option value="720">720p</option>
+          <option value="1080" selected>1080p</option>
+          <option value="2160">4K</option>
+        </select>
+      </label>
       <button id="exportBtn">⬇ Burn &amp; Export MP4</button>
       <span id="exportMsg" class="msg"></span>
     </div>
