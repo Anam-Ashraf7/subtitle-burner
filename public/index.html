@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Subtitle Burner</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1>🎬 Subtitle Burner</h1>
+  <p class="sub">Upload a video and an .xlsx of subtitles, preview live, edit, then burn &amp; export.</p>
+</header>
+
+<section id="uploadCard" class="card">
+  <div class="drop">
+    <label class="filebox">
+      <span class="lbl">Video file</span>
+      <input type="file" id="videoInput" accept="video/*" />
+      <span class="fname" id="videoName">no file</span>
+    </label>
+    <label class="filebox">
+      <span class="lbl">Subtitles .xlsx</span>
+      <input type="file" id="xlsxInput" accept=".xlsx" />
+      <span class="fname" id="xlsxName">no file</span>
+    </label>
+    <button id="loadBtn" disabled>Load</button>
+  </div>
+  <div id="uploadMsg" class="msg"></div>
+</section>
+
+<main id="editor" hidden>
+  <div class="left">
+    <div class="stage">
+      <video id="video" playsinline controls></video>
+      <div id="subOverlay" class="sub-overlay"></div>
+      <div id="blackOverlay" class="black-overlay" hidden><div id="blackText"></div></div>
+    </div>
+    <div class="controls">
+      <button id="playFull">▶ Preview full (intro→video→outro)</button>
+      <button id="stopPreview" hidden>■ Stop preview</button>
+      <button id="exportBtn">⬇ Burn &amp; Export MP4</button>
+      <span id="exportMsg" class="msg"></span>
+    </div>
+    <div id="progressWrap" class="progress-wrap" hidden>
+      <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+      <div class="progress-label"><span id="progressStage">Starting…</span><span id="progressPct">0%</span></div>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="tabs">
+      <button class="tab active" data-tab="intro">Intro</button>
+      <button class="tab" data-tab="subs">Subtitles</button>
+      <button class="tab" data-tab="outro">Outro</button>
+    </div>
+    <div class="tabpane" id="pane-intro"></div>
+    <div class="tabpane" id="pane-subs" hidden></div>
+    <div class="tabpane" id="pane-outro" hidden></div>
+  </div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
