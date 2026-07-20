@@ -272,9 +272,21 @@ app.post('/export', (req, res) => {
   });
 });
 
+// Cap output height to keep x264 memory low on small hosts (Render free = 512MB).
+// Every segment is produced at these same dims so the -c copy concat still works.
+const MAX_HEIGHT = parseInt(process.env.MAX_HEIGHT || '720', 10);
+const even = (n) => (n % 2 ? n - 1 : n); // x264 requires even dimensions
+function outputDims(w, h) {
+  if (h <= MAX_HEIGHT) return { W: even(w), H: even(h) };
+  const scale = MAX_HEIGHT / h;
+  return { W: even(Math.round(w * scale)), H: MAX_HEIGHT };
+}
+const LOWMEM = ['-threads', '1']; // single-threaded encode → much lower peak RAM
+
 async function runExportJob(jobId, s, { intro = [], subs = [], outro = [] }) {
   const job = jobs.get(jobId);
-  const { width: w, height: h, fps, duration: videoDur } = s.meta;
+  const { fps, duration: videoDur } = s.meta;
+  const { W: w, H: h } = outputDims(s.meta.width, s.meta.height); // w,h are now OUTPUT dims
   const dir = fs.mkdtempSync(path.join(WORK, 'exp-'));
   job.dir = dir;
   const durOf = (sc) => Math.max(0.3, Number(sc.duration) || autoDuration(sc.text));
@@ -294,6 +306,7 @@ async function runExportJob(jobId, s, { intro = [], subs = [], outro = [] }) {
       '-f', 'lavfi', '-i', `color=c=black:s=${w}x${h}:r=${fps}:d=${dur}`,
       '-f', 'lavfi', '-i', `anullsrc=r=44100:cl=stereo`,
       '-vf', `subtitles='${scrArg}':fontsdir='${FONTS_ARG}'`,
+      ...LOWMEM,
       '-t', String(dur), '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-preset', 'veryfast',
       '-c:a', 'aac', '-ar', '44100', '-r', String(fps), '-y', out,
     ], (t) => setPct(Math.min(t, dur)));
@@ -313,7 +326,9 @@ async function runExportJob(jobId, s, { intro = [], subs = [], outro = [] }) {
   const assArg = assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
   await run(ffmpegPath, [
     ...PROG, '-i', s.videoPath,
-    '-vf', `subtitles='${assArg}':fontsdir='${FONTS_ARG}'`,
+    // scale to the reduced output size FIRST, then burn subs at that size (ASS PlayRes matches)
+    '-vf', `scale=${w}:${h}:flags=bicubic,setsar=1,subtitles='${assArg}':fontsdir='${FONTS_ARG}'`,
+    ...LOWMEM,
     '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-preset', 'veryfast',
     '-c:a', 'aac', '-ar', '44100', '-r', String(fps), '-y', mainOut,
   ], (t) => setPct(Math.min(t, videoDur || t)));
