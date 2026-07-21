@@ -4,12 +4,15 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Video Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 <nav class="nav">
   <div class="brand"><span class="brand-mark">▶</span> VIDEO STUDIO</div>
-  <div class="nav-links"><span>Home</span><span>My Renders</span><span>Levels</span></div>
+  <div class="nav-links"><span>Home</span><span>My Renders</span></div>
 </nav>
 
 <!-- ===================== BROWSE VIEW ===================== -->
@@ -33,19 +36,19 @@
       <div class="rail" id="railVideos"><div class="loading">Loading videos…</div></div>
     </div>
     <div class="row">
-      <h2 class="row-title"><span class="lv">Level 0</span> Intro &amp; Outro</h2>
+      <h2 class="row-title">Intro &amp; Outro</h2>
       <div class="rail" id="railLevel0"></div>
     </div>
     <div class="row">
-      <h2 class="row-title"><span class="lv">Level 1</span> Subtitles</h2>
+      <h2 class="row-title">Subtitles</h2>
       <div class="rail" id="railLevel1"><div class="loading">Loading templates…</div></div>
     </div>
     <div class="row">
-      <h2 class="row-title"><span class="lv">Level 2</span> Audio + Subtitles</h2>
+      <h2 class="row-title">Audio + Subtitles <span class="req">coming soon</span></h2>
       <div class="rail" id="railLevel2"></div>
     </div>
     <div class="row">
-      <h2 class="row-title"><span class="lv">Level 3</span> Lip-sync &amp; Face Swap</h2>
+      <h2 class="row-title">Lip-sync &amp; Face Swap <span class="req">coming soon</span></h2>
       <div class="rail" id="railLevel3"></div>
     </div>
   </main>
@@ -85,14 +88,6 @@
       </div>
       <div class="render-box">
         <div class="render-row">
-          <label class="sel">Level
-            <select id="levelSel">
-              <option value="0">0 · Intro/Outro only</option>
-              <option value="1" selected>1 · Subtitles</option>
-              <option value="2" disabled>2 · Audio (soon)</option>
-              <option value="3" disabled>3 · Lip-sync (soon)</option>
-            </select>
-          </label>
           <label class="sel">Quality
             <select id="qualitySel">
               <option value="fast">Fastest</option>

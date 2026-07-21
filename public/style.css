@@ -5,7 +5,7 @@
   --text: #fff; --muted: #b3b3b3; --red: #e50914; --red-hi: #f6121d;
   --good: #46d369; --bad: #e87c7c;
 }
-html, body { margin: 0; background: var(--bg); color: var(--text); font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font-family: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; letter-spacing: -0.01em; }
 body { overflow-x: hidden; }
 button { cursor: pointer; font-weight: 700; border: 0; border-radius: 4px; font-size: 14px; font-family: inherit; }
 button:disabled { opacity: .5; cursor: not-allowed; }

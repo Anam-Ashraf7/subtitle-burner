@@ -83,9 +83,12 @@ function selectVideo(v, el) {
   updateSelbar();
 }
 
+function deriveLevel() { state.level = state.subs.length ? 1 : 0; }
+
 function selectLevel0(el) {
-  state.level = 0;
+  state.subs = []; // "Intro & Outro only" — no subtitles
   state.templateName = null;
+  deriveLevel();
   document.querySelectorAll('#railLevel1 .card').forEach((c) => c.classList.remove('selected'));
   document.querySelectorAll('#railLevel0 .card').forEach((c) => c.classList.toggle('selected', c === el));
   updateSelbar();
@@ -103,7 +106,7 @@ function applyCues(cues, name, el) {
   state.subs = (cues.subs || []).map((s) => ({ id: `sub-${cueSeq++}`, ...s }));
   if (!state.intro.length) state.intro = (cues.intro || []).map((s) => ({ id: `intro-${cueSeq++}`, ...s }));
   if (!state.outro.length) state.outro = (cues.outro || []).map((s) => ({ id: `outro-${cueSeq++}`, ...s }));
-  state.level = 1;
+  deriveLevel();
   document.querySelectorAll('#railLevel0 .card').forEach((c) => c.classList.remove('selected'));
   document.querySelectorAll('#railLevel1 .card').forEach((c) => c.classList.toggle('selected', c === el));
   updateSelbar();
@@ -124,12 +127,12 @@ $('#xlsxInput').addEventListener('change', async (e) => {
   e.target.value = '';
 });
 
+function modeName() { return state.subs.length ? 'Subtitles' : 'Intro & Outro only'; }
 function updateSelbar() {
   $('#selVideo').textContent = state.video ? `🎬 ${state.video.name}` : 'No video';
-  const names = ['Intro/Outro only', 'Subtitles', 'Audio + Subtitles', 'Lip-sync'];
-  $('#selLevel').textContent = `Level ${state.level} · ${names[state.level]}`;
+  $('#selLevel').textContent = modeName();
   const tpl = $('#selTemplate');
-  if (state.level >= 1 && state.templateName) { tpl.hidden = false; tpl.textContent = `${state.templateName} (${state.subs.length} lines)`; }
+  if (state.subs.length && state.templateName) { tpl.hidden = false; tpl.textContent = `${state.templateName} (${state.subs.length} lines)`; }
   else tpl.hidden = true;
   $('#continueBtn').disabled = !state.video;
 }
@@ -147,9 +150,9 @@ function openStudio() {
   video.src = state.video.url;
   blackOverlay.hidden = true;
   $('#chosenVideo').textContent = state.video.name;
-  $('#levelSel').value = String(state.level);
+  deriveLevel();
   renderPane('intro'); renderPane('subs'); renderPane('outro');
-  switchTab(state.level === 0 ? 'intro' : 'subs');
+  switchTab(state.subs.length ? 'subs' : 'intro');
   updateLevelUI();
   updateSubOverlay();
   window.scrollTo({ top: 0 });
@@ -163,13 +166,12 @@ function closeStudio() {
   $('#bbVideo').play?.().catch(() => {});
 }
 
-// ===================== LEVEL UI (studio) =====================
-$('#levelSel').addEventListener('change', () => { state.level = parseInt($('#levelSel').value, 10); updateLevelUI(); updateSubOverlay(); });
+// ===================== MODE BADGE (studio) =====================
 function updateLevelUI() {
-  const names = ['Intro/Outro only', 'Subtitles', 'Audio + Subtitles', 'Lip-sync & Face Swap'];
-  $('#levelBadge').textContent = `Level ${state.level} · ${names[state.level]}`;
+  deriveLevel();
+  $('#levelBadge').textContent = modeName();
   const ct = $('#chosenTemplate');
-  if (state.level >= 1 && state.templateName) { ct.style.display = ''; ct.textContent = `Subtitles: ${state.templateName} (${state.subs.length} lines)`; }
+  if (state.subs.length && state.templateName) { ct.style.display = ''; ct.textContent = `Subtitles: ${state.templateName} (${state.subs.length} lines)`; }
   else ct.style.display = 'none';
 }
 
