@@ -16,6 +16,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   display: flex; align-items: center; justify-content: space-between; padding: 0 4vw;
   background: linear-gradient(180deg, rgba(0,0,0,.85) 10%, rgba(0,0,0,0));
 }
+/* In the studio the page scrolls under the nav, so make it solid (no bleed-through) */
+body.studio-open .nav { background: #141414; border-bottom: 1px solid var(--line); }
 .brand { font-family: "Archivo Black", "Inter", sans-serif; font-size: 22px; font-weight: 400; letter-spacing: .01em; color: var(--red); display: flex; align-items: center; gap: 8px; }
 .brand-mark { font-size: 15px; }
 .nav-links { display: flex; gap: 22px; color: #e5e5e5; font-size: 14px; }
@@ -123,7 +125,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 
 /* ---------- TIMELINE EDITOR ---------- */
 .editor-pane { min-width: 0; }
-.editor-head { position: sticky; top: 76px; z-index: 6; background: var(--bg); padding: 6px 0 12px; }
+.editor-head { position: sticky; top: 64px; z-index: 6; background: var(--bg); padding: 12px 0; }
 .tabs { display: flex; gap: 8px; background: #1a1a1a; border: 1px solid var(--line); border-radius: 12px; padding: 5px; }
 .tab { flex: 1; justify-content: center; background: transparent; color: var(--muted); padding: 9px 12px; border-radius: 8px; display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
 .tab:hover { color: #fff; }

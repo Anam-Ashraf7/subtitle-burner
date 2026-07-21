@@ -161,6 +161,7 @@ $('#backBtn').addEventListener('click', closeStudio);
 
 function openStudio() {
   if (!state.video) return;
+  document.body.classList.add('studio-open');
   $('#browseView').hidden = true;
   $('#selbar').hidden = true;
   $('#studio').hidden = false;
@@ -179,6 +180,7 @@ function openStudio() {
 function closeStudio() {
   stopPreview();
   video.pause();
+  document.body.classList.remove('studio-open');
   $('#studio').hidden = true;
   $('#browseView').hidden = false;
   $('#selbar').hidden = false;
