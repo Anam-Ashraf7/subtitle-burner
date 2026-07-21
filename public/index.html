@@ -88,6 +88,41 @@
         <button id="stopPreview" class="ghost" hidden>■ Stop</button>
       </div>
 
+      <div id="substyleBox" class="render-box">
+        <div class="render-head">Subtitle style <span class="hint">— preview matches the export</span></div>
+        <div class="render-row">
+          <label class="sel">Font
+            <select id="fontSel">
+              <option value="dejavu">Sans (DejaVu)</option>
+              <option value="poppins">Poppins</option>
+              <option value="ptserif">PT Serif</option>
+              <option value="anton">Anton</option>
+              <option value="bebas">Bebas Neue</option>
+              <option value="pacifico">Pacifico</option>
+            </select>
+          </label>
+          <label class="sel">Size
+            <select id="sizeSel">
+              <option value="small">Small</option>
+              <option value="medium" selected>Medium</option>
+              <option value="large">Large</option>
+            </select>
+          </label>
+        </div>
+        <div class="render-row">
+          <label class="sel">Background
+            <select id="bgSel">
+              <option value="box" selected>Semi-transparent</option>
+              <option value="solid">Solid black</option>
+              <option value="none">None (outline)</option>
+            </select>
+          </label>
+          <label class="sel">Text color
+            <input type="color" id="colorSel" value="#ffffff" />
+          </label>
+        </div>
+      </div>
+
       <div class="render-box">
         <div class="render-head">Export</div>
         <div id="chosenTemplate" class="chosen-template"></div>

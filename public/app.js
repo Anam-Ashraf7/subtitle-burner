@@ -1,6 +1,22 @@
 const $ = (s) => document.querySelector(s);
-const state = { video: null, templateName: null, intro: [], subs: [], outro: [], level: 0, introOutro: false, tplIntro: [], tplOutro: [] };
+const state = { video: null, templateName: null, intro: [], subs: [], outro: [], level: 0, introOutro: false, tplIntro: [], tplOutro: [],
+  subStyle: { font: 'dejavu', size: 'medium', color: '#ffffff', bg: 'box' } };
 let cueSeq = 0;
+
+// Preview styling that mirrors the server's libass output (WYSIWYG)
+const FONT_CSS = { dejavu: "'DejaVu Sans'", poppins: "'Poppins'", ptserif: "'PT Serif'", anton: "'Anton'", bebas: "'Bebas Neue'", pacifico: "'Pacifico'" };
+const FONT_WEIGHT = { dejavu: 700, poppins: 700, ptserif: 700, anton: 400, bebas: 400, pacifico: 400 };
+const SIZE_CQH = { small: 4.5, medium: 5.5, large: 7.0 }; // matches server SIZE_FACTOR * 100
+function applySubStyle() {
+  const st = state.subStyle;
+  const o = document.querySelector('#subOverlay');
+  o.style.setProperty('--sub-font', FONT_CSS[st.font] || FONT_CSS.dejavu);
+  o.style.setProperty('--sub-weight', FONT_WEIGHT[st.font] || 700);
+  o.style.setProperty('--sub-color', st.color || '#ffffff');
+  o.style.setProperty('--sub-factor', SIZE_CQH[st.size] || 5.5);
+  o.classList.remove('bg-box', 'bg-solid', 'bg-none');
+  o.classList.add('bg-' + (st.bg || 'box'));
+}
 const mapCues = (arr, prefix) => (arr || []).map((s) => ({ id: `${prefix}-${cueSeq++}`, ...s }));
 
 const video = $('#video');
@@ -170,6 +186,8 @@ function openStudio() {
   blackOverlay.hidden = true;
   $('#chosenVideo').textContent = state.video.name;
   deriveLevel();
+  applySubStyle();
+  $('#substyleBox').style.display = state.subs.length ? '' : 'none';
   renderPane('intro'); renderPane('subs'); renderPane('outro');
   updateTabCounts();
   switchTab(state.subs.length ? 'subs' : 'intro');
@@ -186,6 +204,12 @@ function closeStudio() {
   $('#selbar').hidden = false;
   $('#bbVideo').play?.().catch(() => {});
 }
+
+// ===================== SUBTITLE STYLE =====================
+$('#fontSel').addEventListener('change', (e) => { state.subStyle.font = e.target.value; applySubStyle(); });
+$('#sizeSel').addEventListener('change', (e) => { state.subStyle.size = e.target.value; applySubStyle(); });
+$('#bgSel').addEventListener('change', (e) => { state.subStyle.bg = e.target.value; applySubStyle(); });
+$('#colorSel').addEventListener('input', (e) => { state.subStyle.color = e.target.value; applySubStyle(); });
 
 // ===================== MODE BADGE (studio) =====================
 function updateLevelUI() {
@@ -333,7 +357,7 @@ $('#exportBtn').addEventListener('click', async () => {
     const maxHeight = parseInt($('#resSel').value, 10);
     const r = await fetch('/export', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ videoId: state.video.id, level: state.level, intro: state.intro, subs: state.subs, outro: state.outro, ...qual, maxHeight }),
+      body: JSON.stringify({ videoId: state.video.id, level: state.level, intro: state.intro, subs: state.subs, outro: state.outro, subStyle: state.subStyle, ...qual, maxHeight }),
     });
     const first = await r.json();
     if (!r.ok) throw new Error(first.error || 'export failed');

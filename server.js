@@ -20,6 +20,7 @@ const app = express();
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/videos', express.static(VIDEOS_DIR, { acceptRanges: true })); // range-enabled preview streaming
+app.use('/fonts', express.static(path.join(__dirname, 'assets', 'fonts'))); // @font-face for WYSIWYG preview
 
 const upload = multer({ dest: WORK, limits: { fileSize: 1024 * 1024 * 1024 } });
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.m4v']);
@@ -204,9 +205,36 @@ function assTime(sec) {
 function assEscape(t) {
   return String(t).replace(/\\/g, '\\\\').replace(/\n/g, '\\N').replace(/\{/g, '(').replace(/\}/g, ')');
 }
-function buildAss(subs, w, h) {
-  const fontSize = Math.round(h * 0.055);
+
+// Subtitle fonts bundled in assets/fonts. `bold` = whether we render the bold weight.
+const SUB_FONTS = {
+  dejavu: { name: 'DejaVu Sans', bold: true },
+  poppins: { name: 'Poppins', bold: true },
+  ptserif: { name: 'PT Serif', bold: true },
+  anton: { name: 'Anton', bold: false },
+  bebas: { name: 'Bebas Neue', bold: false },
+  pacifico: { name: 'Pacifico', bold: false },
+};
+const SIZE_FACTOR = { small: 0.045, medium: 0.055, large: 0.07 };
+const hexToAss = (hex) => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '#ffffff'));
+  const v = m ? m[1] : 'ffffff';
+  return `&H00${v.slice(4, 6)}${v.slice(2, 4)}${v.slice(0, 2)}`.toUpperCase(); // &H00BBGGRR
+};
+function resolveStyle(style = {}) {
+  const f = SUB_FONTS[style.font] || SUB_FONTS.dejavu;
+  const factor = SIZE_FACTOR[style.size] || SIZE_FACTOR.medium;
+  return { font: f.name, bold: f.bold ? -1 : 0, factor, color: hexToAss(style.color), bg: style.bg || 'box' };
+}
+
+function buildAss(subs, w, h, style = {}) {
+  const s = resolveStyle(style);
+  const fontSize = Math.round(h * s.factor);
   const margin = Math.round(h * 0.06);
+  // BorderStyle 3 = opaque/box background; 1 = outline+shadow (no box).
+  let borderStyle, outline, shadow, back, outlineCol;
+  if (s.bg === 'none') { borderStyle = 1; outline = Math.max(2, Math.round(h * 0.004)); shadow = Math.max(1, Math.round(h * 0.002)); back = '&H00000000'; outlineCol = '&H00000000'; }
+  else { borderStyle = 3; outline = Math.max(6, Math.round(h * 0.008)); shadow = 0; outlineCol = '&H00000000'; back = s.bg === 'solid' ? '&H00000000' : '&H80000000'; }
   const head = `[Script Info]
 ScriptType: v4.00+
 PlayResX: ${w}
@@ -215,14 +243,14 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
-Style: Def,DejaVu Sans,${fontSize},&H00FFFFFF,&H00000000,&H80000000,-1,1,3,1,2,60,60,${margin}
+Style: Def,${s.font},${fontSize},${s.color},${outlineCol},${back},${s.bold},${borderStyle},${outline},${shadow},2,60,60,${margin}
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
   const lines = subs
-    .filter((s) => s.text && s.text.trim())
-    .map((s) => `Dialogue: 0,${assTime(s.start)},${assTime(s.end)},Def,,0,0,0,,${assEscape(s.text)}`)
+    .filter((x) => x.text && x.text.trim())
+    .map((x) => `Dialogue: 0,${assTime(x.start)},${assTime(x.end)},Def,,0,0,0,,${assEscape(x.text)}`)
     .join('\n');
   return head + lines + '\n';
 }
@@ -258,7 +286,7 @@ const FONTS_ARG = escFilterPath(FONTS_DIR);
 
 // Centered black-screen text as an ASS subtitle (uses libass — works everywhere,
 // unlike the drawtext filter which is missing from many static ffmpeg builds).
-function buildScreenAss(text, w, h, dur) {
+function buildScreenAss(text, w, h, dur, fontName = 'DejaVu Sans') {
   const fontSize = Math.round(h * 0.06);
   // wrap ~28 chars per line
   const words = String(text).split(/\s+/);
@@ -278,7 +306,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
-Style: Scr,DejaVu Sans,${fontSize},&H00FFFFFF,&H00000000,&H00000000,-1,1,0,0,5,40,40,40
+Style: Scr,${fontName},${fontSize},&H00FFFFFF,&H00000000,&H00000000,-1,1,0,0,5,40,40,40
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -328,9 +356,10 @@ function outputDims(w, h, maxHeight) {
   return { W: even(Math.round(w * scale)), H: maxHeight };
 }
 
-async function runExportJob(jobId, s, { intro = [], subs = [], outro = [], preset, crf, maxHeight }) {
+async function runExportJob(jobId, s, { intro = [], subs = [], outro = [], preset, crf, maxHeight, subStyle }) {
   const job = jobs.get(jobId);
   const { fps, duration: videoDur } = s.meta;
+  const styleFont = resolveStyle(subStyle).font; // same font used for black screens
   // per-export quality controls, validated against allowlists
   const usePreset = PRESETS.includes(preset) ? preset : DEFAULT_PRESET;
   const useCrf = Number.isFinite(+crf) ? Math.min(35, Math.max(14, Math.round(+crf))) : DEFAULT_CRF;
@@ -349,7 +378,7 @@ async function runExportJob(jobId, s, { intro = [], subs = [], outro = [], prese
     const dur = durOf(sc);
     job.stage = label;
     const scrAss = path.join(dir, `${sc.id}.ass`);
-    fs.writeFileSync(scrAss, buildScreenAss(sc.text, w, h, dur));
+    fs.writeFileSync(scrAss, buildScreenAss(sc.text, w, h, dur, styleFont));
     const scrArg = scrAss.replace(/\\/g, '/').replace(/:/g, '\\:');
     await run(ffmpegPath, [
       ...PROG,
@@ -371,7 +400,7 @@ async function runExportJob(jobId, s, { intro = [], subs = [], outro = [], prese
   // main video with burned subs
   job.stage = 'Burning subtitles into video…';
   const assPath = path.join(dir, 'subs.ass');
-  fs.writeFileSync(assPath, buildAss(subs, w, h));
+  fs.writeFileSync(assPath, buildAss(subs, w, h, subStyle));
   const mainOut = path.join(dir, 'main.mp4');
   const assArg = assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
   // Only rescale when the source is actually bigger than target — skips a full
