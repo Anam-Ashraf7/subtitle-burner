@@ -170,6 +170,7 @@ function openStudio() {
   $('#chosenVideo').textContent = state.video.name;
   deriveLevel();
   renderPane('intro'); renderPane('subs'); renderPane('outro');
+  updateTabCounts();
   switchTab(state.subs.length ? 'subs' : 'intro');
   updateLevelUI();
   updateSubOverlay();
@@ -202,6 +203,10 @@ function updateSubOverlay() {
   for (const c of state.subs) { if (t >= c.start && t <= c.end) { active = c; break; } }
   subOverlay.innerHTML = active && active.text ? `<span>${escapeHtml(active.text)}</span>` : '';
   document.querySelectorAll('#pane-subs .cue').forEach((el) => el.classList.toggle('active', active && el.dataset.id === active.id));
+  // auto-scroll the active cue into view (unless the user is typing)
+  if (active && !$('#pane-subs').hidden && document.activeElement?.tagName !== 'TEXTAREA') {
+    document.querySelector(`#pane-subs .cue[data-id="${active.id}"]`)?.scrollIntoView({ block: 'nearest' });
+  }
 }
 
 // ===================== EDITOR TABS =====================
@@ -211,39 +216,69 @@ function switchTab(tab) {
   ['intro', 'subs', 'outro'].forEach((k) => { $('#pane-' + k).hidden = k !== tab; });
 }
 
+const SPK_COLORS = ['#6ea8fe', '#f6c945', '#7ee787', '#ff7b9c', '#c39bff', '#4fd1c5', '#ff9d5c'];
+function speakerColor(name) { let h = 0; for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return SPK_COLORS[h % SPK_COLORS.length]; }
+function updateTabCounts() {
+  const labels = { intro: 'Intro', subs: 'Subtitles', outro: 'Outro' };
+  document.querySelectorAll('.tab').forEach((t) => { const k = t.dataset.tab; t.innerHTML = `${labels[k]} <span class="badge">${state[k].length}</span>`; });
+}
+
 function renderPane(kind) {
   const pane = $('#pane-' + kind);
   pane.innerHTML = '';
   const list = state[kind];
   const isScreen = kind !== 'subs';
+
+  const head = document.createElement('div');
+  head.className = 'pane-head';
+  head.textContent = isScreen
+    ? `Black-screen text shown ${kind === 'intro' ? 'before' : 'after'} the video. Add as many as you like.`
+    : 'Burned onto the video at each timestamp. Edit text and the preview updates live.';
+  pane.appendChild(head);
+
+  if (!list.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = isScreen ? `No ${kind} screens yet — add one below.` : 'No subtitles in this set.';
+    pane.appendChild(empty);
+  }
+
   list.forEach((c) => {
     const div = document.createElement('div');
     div.className = 'cue';
     div.dataset.id = c.id;
-    const timeLabel = isScreen ? `screen · ${c.duration ?? autoDur(c.text)}s` : `${fmt(c.start)} → ${fmt(c.end)}`;
+    const color = speakerColor(c.person || kind);
+    const timeLabel = isScreen ? `${c.duration ?? autoDur(c.text)}s` : `${fmt(c.start)} – ${fmt(c.end)}`;
     div.innerHTML = `
-      <div class="meta">
-        <span class="person">${escapeHtml(c.person || kind)}</span>
-        <span class="time">${timeLabel} ${!isScreen ? `<button class="jump" data-jump="${c.start}">jump</button>` : ''}</span>
+      <div class="cue-head">
+        <span class="speaker" style="--sc:${color}">${escapeHtml(c.person || kind)}</span>
+        <span class="cue-time">${!isScreen ? `<button class="jump" data-jump="${c.start}">▶ ${timeLabel}</button>` : `⏱ ${timeLabel}`}</span>
       </div>
-      <textarea rows="2">${escapeHtml(c.text || '')}</textarea>
-      ${c.oldText ? `<div class="old">old: ${escapeHtml(c.oldText)}</div>` : ''}
-      ${isScreen ? `<div class="row2"><label>Duration (s)</label><input type="number" step="0.1" min="0.3" value="${c.duration ?? autoDur(c.text)}" /><button class="jump del">✕ remove</button></div>` : ''}`;
+      <textarea rows="2" placeholder="${isScreen ? 'Screen text…' : 'Subtitle text…'}">${escapeHtml(c.text || '')}</textarea>
+      <div class="cue-foot">
+        <span class="charcount"></span>
+        ${c.oldText ? `<span class="old" title="original text">was: ${escapeHtml(c.oldText)}</span>` : '<span></span>'}
+        ${isScreen ? `<span class="screen-ctrl"><label>dur</label><input type="number" step="0.1" min="0.3" value="${c.duration ?? autoDur(c.text)}" /><button class="mini del" title="remove">✕</button></span>` : ''}
+      </div>`;
     const ta = div.querySelector('textarea');
-    ta.addEventListener('input', () => { c.text = ta.value; if (kind === 'subs') updateSubOverlay(); });
+    const cc = div.querySelector('.charcount');
+    const updCC = () => { const n = ta.value.length; cc.textContent = `${n} chars`; cc.className = 'charcount' + (n > 84 ? ' bad' : n > 42 ? ' warn' : ''); };
+    updCC();
+    ta.addEventListener('input', () => { c.text = ta.value; updCC(); if (kind === 'subs') updateSubOverlay(); });
     const dur = div.querySelector('input[type=number]');
     if (dur) dur.addEventListener('input', () => { c.duration = Math.max(0.3, parseFloat(dur.value) || 0.3); });
     const jump = div.querySelector('[data-jump]');
     if (jump) jump.addEventListener('click', () => { video.currentTime = parseFloat(jump.dataset.jump); video.play(); });
     const del = div.querySelector('.del');
-    if (del) del.addEventListener('click', () => { state[kind] = state[kind].filter((x) => x.id !== c.id); renderPane(kind); });
+    if (del) del.addEventListener('click', () => { state[kind] = state[kind].filter((x) => x.id !== c.id); renderPane(kind); updateTabCounts(); });
     pane.appendChild(div);
   });
+
   if (isScreen) {
     const add = document.createElement('button');
     add.className = 'addline';
-    add.textContent = `+ Add ${kind} line`;
-    add.addEventListener('click', () => { state[kind].push({ id: `${kind}-${cueSeq++}`, text: '', duration: 2.5, person: 'black screen' }); renderPane(kind); });
+    add.innerHTML = `＋ Add ${kind} screen`;
+    add.addEventListener('click', () => { state[kind].push({ id: `${kind}-${cueSeq++}`, text: '', duration: 2.5, person: 'black screen' }); renderPane(kind); updateTabCounts(); });
     pane.appendChild(add);
   }
 }
