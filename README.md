@@ -1,6 +1,20 @@
-# Subtitle Burner
+# Video Studio
 
-Web app to burn subtitles from an `.xlsx` file into a video, with live preview and realtime editing.
+Netflix-style web app to produce videos from a library: pick a base video, layer on
+intro/outro screens and subtitles (from `.xlsx` templates or your own upload), preview
+live, and burn & export an MP4.
+
+## Levels
+- **Level 0** — Intro & Outro black screens only (no subtitles)
+- **Level 1** — Subtitles burned in (+ intro/outro)
+- **Level 2** — Audio + Subtitles (placeholder, coming soon)
+- **Level 3** — Lip-sync & Face Swap (placeholder, coming soon)
+
+## Content
+- Base videos live in `videos/` (auto-listed; a few samples are generated on first run).
+  Drop your own `.mp4/.webm/.mov` files in there.
+- Subtitle templates live in `templates/subtitles/*.xlsx` (auto-listed). Users can also
+  upload their own xlsx per session.
 
 ## Run
 

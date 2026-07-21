@@ -12,14 +12,55 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ffprobePath = ffprobeStatic.path;
 const WORK = path.join(__dirname, 'work');
-fs.mkdirSync(WORK, { recursive: true });
+const VIDEOS_DIR = path.join(__dirname, 'videos');            // base video library
+const TEMPLATES_DIR = path.join(__dirname, 'templates', 'subtitles'); // subtitle xlsx templates
+for (const d of [WORK, VIDEOS_DIR, TEMPLATES_DIR]) fs.mkdirSync(d, { recursive: true });
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/videos', express.static(VIDEOS_DIR, { acceptRanges: true })); // range-enabled preview streaming
 
 const upload = multer({ dest: WORK, limits: { fileSize: 1024 * 1024 * 1024 } });
-const sessions = new Map(); // id -> { videoPath, cues, meta }
+const VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.m4v']);
+const metaCache = new Map(); // videoPath -> probe meta
+
+function listVideos() {
+  return fs.readdirSync(VIDEOS_DIR)
+    .filter((f) => VIDEO_EXTS.has(path.extname(f).toLowerCase()))
+    .sort()
+    .map((f) => ({ id: f, name: prettyName(f), url: `/videos/${encodeURIComponent(f)}` }));
+}
+function listTemplates() {
+  return fs.readdirSync(TEMPLATES_DIR)
+    .filter((f) => path.extname(f).toLowerCase() === '.xlsx')
+    .sort()
+    .map((f) => ({ id: f, name: prettyName(f) }));
+}
+function prettyName(f) {
+  return path.basename(f, path.extname(f)).replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Generate a few sample clips on first run so the library isn't empty.
+async function seedSampleVideos() {
+  if (listVideos().length) return;
+  const samples = [
+    { name: 'Sample - Bars.mp4', src: 'testsrc2=size=1280x720:rate=25' },
+    { name: 'Sample - Gradient.mp4', src: 'gradients=size=1280x720:rate=25' },
+    { name: 'Sample - Mandelbrot.mp4', src: 'mandelbrot=size=1280x720:rate=25' },
+  ];
+  for (const s of samples) {
+    const out = path.join(VIDEOS_DIR, s.name);
+    try {
+      await run(ffmpegPath, [
+        '-f', 'lavfi', '-i', `${s.src}`,
+        '-f', 'lavfi', '-i', 'sine=frequency=320:sample_rate=44100',
+        '-t', '8', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-preset', 'ultrafast',
+        '-c:a', 'aac', '-shortest', '-y', out,
+      ]);
+    } catch (e) { console.error('seed failed', s.name, e.message); }
+  }
+}
 
 // ---------- xlsx parsing ----------
 const READ_SPEED = 15; // chars/sec for auto black-screen duration
@@ -115,49 +156,40 @@ async function probe(videoPath) {
   });
 }
 
-app.post('/upload', upload.fields([{ name: 'xlsx' }, { name: 'video' }]), async (req, res) => {
+// ---------- library + template API ----------
+function resolveVideo(id) {
+  const safe = path.basename(id || ''); // prevent traversal
+  const p = path.join(VIDEOS_DIR, safe);
+  return fs.existsSync(p) && VIDEO_EXTS.has(path.extname(p).toLowerCase()) ? p : null;
+}
+function resolveTemplate(id) {
+  const safe = path.basename(id || '');
+  const p = path.join(TEMPLATES_DIR, safe);
+  return fs.existsSync(p) && path.extname(p).toLowerCase() === '.xlsx' ? p : null;
+}
+
+app.get('/api/videos', (req, res) => res.json(listVideos()));
+app.get('/api/subtitle-templates', (req, res) => res.json(listTemplates()));
+
+// parsed cues for a named template
+app.get('/api/subtitle-templates/:id', (req, res) => {
+  const p = resolveTemplate(req.params.id);
+  if (!p) return res.status(404).json({ error: 'template not found' });
   try {
-    const xlsxFile = req.files?.xlsx?.[0];
-    const videoFile = req.files?.video?.[0];
-    if (!xlsxFile || !videoFile) return res.status(400).json({ error: 'Both xlsx and video are required.' });
-
-    const buf = fs.readFileSync(xlsxFile.path);
-    const parsed = parseWorkbook(buf);
-    fs.unlinkSync(xlsxFile.path);
-
-    const ext = path.extname(videoFile.originalname) || '.mp4';
-    const videoPath = videoFile.path + ext;
-    fs.renameSync(videoFile.path, videoPath);
-    const meta = await probe(videoPath);
-
-    const id = randomUUID();
-    sessions.set(id, { videoPath, meta });
-    res.json({ id, ...parsed, meta });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: String(e.message || e) });
-  }
+    res.json(parseWorkbook(fs.readFileSync(p)));
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
 });
 
-app.get('/video/:id', (req, res) => {
-  const s = sessions.get(req.params.id);
-  if (!s) return res.status(404).end();
-  const stat = fs.statSync(s.videoPath);
-  const range = req.headers.range;
-  if (range) {
-    const m = /bytes=(\d+)-(\d*)/.exec(range);
-    const start = parseInt(m[1], 10);
-    const end = m[2] ? parseInt(m[2], 10) : stat.size - 1;
-    res.writeHead(206, {
-      'Content-Range': `bytes ${start}-${end}/${stat.size}`,
-      'Accept-Ranges': 'bytes',
-      'Content-Length': end - start + 1,
-      'Content-Type': 'video/mp4',
-    });
-    fs.createReadStream(s.videoPath, { start, end }).pipe(res);
-  } else {
-    res.writeHead(200, { 'Content-Length': stat.size, 'Content-Type': 'video/mp4' });
-    fs.createReadStream(s.videoPath).pipe(res);
+// upload-your-own subtitle xlsx (no video) -> parsed cues
+app.post('/api/subtitles', upload.single('xlsx'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'xlsx file required' });
+  try {
+    const parsed = parseWorkbook(fs.readFileSync(req.file.path));
+    fs.unlinkSync(req.file.path);
+    res.json(parsed);
+  } catch (e) {
+    try { fs.unlinkSync(req.file.path); } catch {}
+    res.status(500).json({ error: String(e.message || e) });
   }
 });
 
@@ -258,14 +290,22 @@ Dialogue: 0,${assTime(0)},${assTime(dur)},Scr,,0,0,0,,${assEscape(body)}
 const jobs = new Map(); // jobId -> { percent, stage, done, error, file, dir }
 
 // Kick off an export job; returns immediately with a jobId. Progress via SSE.
-app.post('/export', (req, res) => {
-  const { id } = req.body || {};
-  const s = sessions.get(id);
-  if (!s) return res.status(404).json({ error: 'session not found' });
+app.post('/export', async (req, res) => {
+  const { videoId, level = 1 } = req.body || {};
+  if (+level >= 2) return res.status(400).json({ error: `Level ${level} (audio / lip-sync / face-swap) is not available yet.` });
+  const videoPath = resolveVideo(videoId);
+  if (!videoPath) return res.status(404).json({ error: 'video not found in library' });
+  let meta = metaCache.get(videoPath);
+  if (!meta) {
+    try { meta = await probe(videoPath); metaCache.set(videoPath, meta); }
+    catch (e) { return res.status(500).json({ error: 'could not read video: ' + e.message }); }
+  }
   const jobId = randomUUID();
   jobs.set(jobId, { percent: 0, stage: 'Starting…', done: false, error: null, file: null, dir: null });
   res.json({ jobId });
-  runExportJob(jobId, s, req.body).catch((e) => {
+  // Level 0 => no subtitles burned; Level 1 => burn subtitles.
+  const body = { ...req.body, subs: +level >= 1 ? req.body.subs || [] : [] };
+  runExportJob(jobId, { videoPath, meta }, body).catch((e) => {
     const job = jobs.get(jobId);
     if (job) { job.error = String(e.message || e); }
     console.error(e);
@@ -394,4 +434,8 @@ app.get('/result/:jobId', (req, res) => {
 });
 
 const PORT = process.env.PORT || 5178;
-app.listen(PORT, () => console.log(`Subtitle burner running on port ${PORT}`));
+app.listen(PORT, async () => {
+  console.log(`Subtitle burner running on port ${PORT}`);
+  await seedSampleVideos();
+  console.log(`Library: ${listVideos().length} videos, ${listTemplates().length} subtitle templates`);
+});
