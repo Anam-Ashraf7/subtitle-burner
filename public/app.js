@@ -1,5 +1,5 @@
 const $ = (s) => document.querySelector(s);
-const state = { video: null, templateName: null, intro: [], subs: [], outro: [], level: 1 };
+const state = { video: null, templateName: null, intro: [], subs: [], outro: [], level: 0 };
 let cueSeq = 0;
 
 const video = $('#video');
@@ -19,12 +19,15 @@ async function boot() {
   try {
     const videos = await (await fetch('/api/videos')).json();
     renderVideoRail(videos);
+    if (videos[0]) { $('#bbVideo').src = videos[0].url; $('#bbVideo').play?.().catch(() => {}); }
   } catch { $('#railVideos').innerHTML = '<div class="loading">Failed to load videos.</div>'; }
   try {
     const tpls = await (await fetch('/api/subtitle-templates')).json();
     renderTemplateRail(tpls);
   } catch { $('#railLevel1').innerHTML = '<div class="loading">Failed to load templates.</div>'; }
 }
+
+$('#bbBrowse').addEventListener('click', () => $('#railVideos').scrollIntoView({ behavior: 'smooth', block: 'center' }));
 
 function card({ cls = '', thumbHtml, cap, sub, onClick }) {
   const el = document.createElement('div');
@@ -50,11 +53,7 @@ function renderVideoRail(videos) {
 function renderLevel0Card() {
   const rail = $('#railLevel0');
   rail.innerHTML = '';
-  const el = card({
-    cls: 'action', thumbHtml: placeholderThumb('✎'),
-    cap: 'Intro & Outro', sub: 'add your own black-screen text',
-    onClick: () => { state.level = Math.max(state.level, 0); openDrawer('intro'); },
-  });
+  const el = card({ cls: 'action level0', thumbHtml: placeholderThumb('✎'), cap: 'Intro & Outro only', sub: 'no subtitles — add text in the studio', onClick: () => selectLevel0(el) });
   rail.appendChild(el);
 }
 
@@ -62,14 +61,10 @@ function renderTemplateRail(tpls) {
   const rail = $('#railLevel1');
   rail.innerHTML = '';
   tpls.forEach((t) => {
-    const el = card({
-      thumbHtml: placeholderThumb('📝'), cap: t.name, sub: 'subtitle set',
-      onClick: () => selectTemplate(t, el),
-    });
+    const el = card({ thumbHtml: placeholderThumb('📝'), cap: t.name, sub: 'subtitle set', onClick: () => selectTemplate(t, el) });
     el.dataset.id = t.id;
     rail.appendChild(el);
   });
-  // upload-your-own
   const up = card({ cls: 'action', thumbHtml: placeholderThumb('＋'), cap: 'Upload your own', sub: '.xlsx subtitle file', onClick: () => $('#xlsxInput').click() });
   rail.appendChild(up);
 }
@@ -78,70 +73,104 @@ function renderLevel2and3() {
   $('#railLevel2').appendChild(card({ cls: 'soon action', thumbHtml: placeholderThumb('＋'), cap: 'Render new audio', sub: 'coming soon', onClick: () => comingSoon(2) }));
   $('#railLevel3').appendChild(card({ cls: 'soon action', thumbHtml: placeholderThumb('＋'), cap: 'Lip-sync & Face Swap', sub: 'coming soon', onClick: () => comingSoon(3) }));
 }
-function comingSoon(lvl) {
-  setMsg('#exportMsg', `Level ${lvl} is coming soon.`, '');
-  if (!$('#hero').hidden) $('#hero').scrollIntoView({ behavior: 'smooth' });
-  alert(`Level ${lvl} (${lvl === 2 ? 'audio rendering' : 'lip-sync & face swap'}) is coming soon.`);
-}
+function comingSoon(lvl) { alert(`Level ${lvl} (${lvl === 2 ? 'audio rendering' : 'lip-sync & face swap'}) is coming soon.`); }
 
-// ===================== SELECTION =====================
+// ===================== SELECTION (browse view — no navigation) =====================
 function selectVideo(v, el) {
   state.video = v;
   document.querySelectorAll('#railVideos .card').forEach((c) => c.classList.toggle('selected', c === el));
-  $('#hero').hidden = false;
-  video.src = v.url;
-  blackOverlay.hidden = true;
-  $('#chosenVideo').textContent = v.name;
-  updateLevelUI();
-  updateSubOverlay();
-  $('#hero').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('#selbar').hidden = false;
+  updateSelbar();
+}
+
+function selectLevel0(el) {
+  state.level = 0;
+  state.templateName = null;
+  document.querySelectorAll('#railLevel1 .card').forEach((c) => c.classList.remove('selected'));
+  document.querySelectorAll('#railLevel0 .card').forEach((c) => c.classList.toggle('selected', c === el));
+  updateSelbar();
 }
 
 async function selectTemplate(t, el) {
   try {
     const cues = await (await fetch(`/api/subtitle-templates/${encodeURIComponent(t.id)}`)).json();
     applyCues(cues, t.name, el);
-  } catch { setMsg('#exportMsg', 'Failed to load template.', 'err'); }
+  } catch { alert('Failed to load template.'); }
 }
 
 function applyCues(cues, name, el) {
   state.templateName = name;
   state.subs = (cues.subs || []).map((s) => ({ id: `sub-${cueSeq++}`, ...s }));
-  // seed intro/outro from the file only if the user hasn't added any yet (Level 0 is independent)
   if (!state.intro.length) state.intro = (cues.intro || []).map((s) => ({ id: `intro-${cueSeq++}`, ...s }));
   if (!state.outro.length) state.outro = (cues.outro || []).map((s) => ({ id: `outro-${cueSeq++}`, ...s }));
   state.level = 1;
-  $('#levelSel').value = '1';
-  if (el) document.querySelectorAll('#railLevel1 .card').forEach((c) => c.classList.toggle('selected', c === el));
-  $('#chosenTemplate').textContent = `Subtitles: ${name} (${state.subs.length} lines)`;
-  renderPane('intro'); renderPane('subs'); renderPane('outro');
-  updateLevelUI();
-  updateSubOverlay();
-  setMsg('#exportMsg', '', '');
+  document.querySelectorAll('#railLevel0 .card').forEach((c) => c.classList.remove('selected'));
+  document.querySelectorAll('#railLevel1 .card').forEach((c) => c.classList.toggle('selected', c === el));
+  updateSelbar();
 }
 
-// upload your own xlsx
 $('#xlsxInput').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
   const fd = new FormData(); fd.append('xlsx', file);
-  setMsg('#exportMsg', 'Parsing subtitle file…', '');
   try {
     const r = await fetch('/api/subtitles', { method: 'POST', body: fd });
     const cues = await r.json();
     if (!r.ok) throw new Error(cues.error || 'parse failed');
     document.querySelectorAll('#railLevel1 .card').forEach((c) => c.classList.remove('selected'));
     applyCues(cues, file.name.replace(/\.xlsx$/i, ''), null);
-  } catch (err) { setMsg('#exportMsg', err.message, 'err'); }
+    if (state.video) $('#selbar').hidden = false;
+  } catch (err) { alert(err.message); }
   e.target.value = '';
 });
 
-// ===================== LEVEL UI =====================
+function updateSelbar() {
+  $('#selVideo').textContent = state.video ? `🎬 ${state.video.name}` : 'No video';
+  const names = ['Intro/Outro only', 'Subtitles', 'Audio + Subtitles', 'Lip-sync'];
+  $('#selLevel').textContent = `Level ${state.level} · ${names[state.level]}`;
+  const tpl = $('#selTemplate');
+  if (state.level >= 1 && state.templateName) { tpl.hidden = false; tpl.textContent = `${state.templateName} (${state.subs.length} lines)`; }
+  else tpl.hidden = true;
+  $('#continueBtn').disabled = !state.video;
+}
+
+// ===================== CONTINUE → STUDIO =====================
+$('#continueBtn').addEventListener('click', openStudio);
+$('#backBtn').addEventListener('click', closeStudio);
+
+function openStudio() {
+  if (!state.video) return;
+  $('#browseView').hidden = true;
+  $('#selbar').hidden = true;
+  $('#studio').hidden = false;
+  $('#bbVideo').pause?.();
+  video.src = state.video.url;
+  blackOverlay.hidden = true;
+  $('#chosenVideo').textContent = state.video.name;
+  $('#levelSel').value = String(state.level);
+  renderPane('intro'); renderPane('subs'); renderPane('outro');
+  switchTab(state.level === 0 ? 'intro' : 'subs');
+  updateLevelUI();
+  updateSubOverlay();
+  window.scrollTo({ top: 0 });
+}
+function closeStudio() {
+  stopPreview();
+  video.pause();
+  $('#studio').hidden = true;
+  $('#browseView').hidden = false;
+  $('#selbar').hidden = false;
+  $('#bbVideo').play?.().catch(() => {});
+}
+
+// ===================== LEVEL UI (studio) =====================
 $('#levelSel').addEventListener('change', () => { state.level = parseInt($('#levelSel').value, 10); updateLevelUI(); updateSubOverlay(); });
 function updateLevelUI() {
   const names = ['Intro/Outro only', 'Subtitles', 'Audio + Subtitles', 'Lip-sync & Face Swap'];
   $('#levelBadge').textContent = `Level ${state.level} · ${names[state.level]}`;
-  $('#chosenTemplate').style.display = state.level >= 1 && state.templateName ? '' : 'none';
+  const ct = $('#chosenTemplate');
+  if (state.level >= 1 && state.templateName) { ct.style.display = ''; ct.textContent = `Subtitles: ${state.templateName} (${state.subs.length} lines)`; }
+  else ct.style.display = 'none';
 }
 
 // ===================== PREVIEW OVERLAY =====================
@@ -155,17 +184,12 @@ function updateSubOverlay() {
   document.querySelectorAll('#pane-subs .cue').forEach((el) => el.classList.toggle('active', active && el.dataset.id === active.id));
 }
 
-// ===================== EDITOR DRAWER =====================
-$('#editToggle').addEventListener('click', () => openDrawer('subs'));
-$('#drawerClose').addEventListener('click', () => { $('#drawer').hidden = true; });
-function openDrawer(tab) {
-  $('#drawer').hidden = false;
+// ===================== EDITOR TABS =====================
+document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x.dataset.tab === tab));
   ['intro', 'subs', 'outro'].forEach((k) => { $('#pane-' + k).hidden = k !== tab; });
-  renderPane('intro'); renderPane('subs'); renderPane('outro');
-  $('#drawer').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
-document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => openDrawer(t.dataset.tab)));
 
 function renderPane(kind) {
   const pane = $('#pane-' + kind);
@@ -199,40 +223,28 @@ function renderPane(kind) {
     const add = document.createElement('button');
     add.className = 'addline';
     add.textContent = `+ Add ${kind} line`;
-    add.addEventListener('click', () => {
-      state[kind].push({ id: `${kind}-${cueSeq++}`, text: '', duration: 2.5, person: 'black screen' });
-      renderPane(kind);
-    });
+    add.addEventListener('click', () => { state[kind].push({ id: `${kind}-${cueSeq++}`, text: '', duration: 2.5, person: 'black screen' }); renderPane(kind); });
     pane.appendChild(add);
   }
 }
 
-// ===================== FULL PREVIEW (intro→video→outro) =====================
+// ===================== FULL PREVIEW =====================
 let previewTimer = null, previewing = false, suppressIntro = false;
 const stopBtn = $('#stopPreview');
 const clearTimer = () => { if (previewTimer) { clearTimeout(previewTimer); previewTimer = null; } };
-
 function playScreens(list, i, done) {
   if (!previewing) return;
   if (i >= list.length) return done();
   const sc = list[i];
-  blackOverlay.hidden = false;
-  blackText.textContent = sc.text || '';
+  blackOverlay.hidden = false; blackText.textContent = sc.text || '';
   previewTimer = setTimeout(() => playScreens(list, i + 1, done), (Number(sc.duration) || autoDur(sc.text)) * 1000);
 }
 function runIntroThenVideo() {
   clearTimer(); previewing = true; video.pause(); stopBtn.hidden = false;
-  playScreens(state.intro, 0, () => {
-    previewing = false; blackOverlay.hidden = true; suppressIntro = true;
-    video.currentTime = 0; video.play();
-  });
+  playScreens(state.intro, 0, () => { previewing = false; blackOverlay.hidden = true; suppressIntro = true; video.currentTime = 0; video.play(); });
 }
-function runOutro() {
-  clearTimer(); previewing = true; stopBtn.hidden = false;
-  playScreens(state.outro, 0, () => { previewing = false; blackOverlay.hidden = true; stopBtn.hidden = true; });
-}
+function runOutro() { clearTimer(); previewing = true; stopBtn.hidden = false; playScreens(state.outro, 0, () => { previewing = false; blackOverlay.hidden = true; stopBtn.hidden = true; }); }
 function stopPreview() { previewing = false; suppressIntro = false; clearTimer(); blackOverlay.hidden = true; stopBtn.hidden = true; video.pause(); }
-
 $('#playFull').addEventListener('click', () => { stopPreview(); video.currentTime = 0; suppressIntro = false; runIntroThenVideo(); });
 stopBtn.addEventListener('click', stopPreview);
 video.addEventListener('play', () => {
@@ -243,15 +255,11 @@ video.addEventListener('play', () => {
 video.addEventListener('ended', () => { if (!previewing && state.outro.length) runOutro(); });
 
 // ===================== EXPORT =====================
-function setProgress(pct, stage) {
-  $('#progressBar').style.width = pct + '%';
-  $('#progressPct').textContent = pct + '%';
-  if (stage) $('#progressStage').textContent = stage;
-}
+function setProgress(pct, stage) { $('#progressBar').style.width = pct + '%'; $('#progressPct').textContent = pct + '%'; if (stage) $('#progressStage').textContent = stage; }
 $('#exportBtn').addEventListener('click', async () => {
-  if (!state.video) { setMsg('#exportMsg', 'Pick a base video first.', 'err'); return; }
+  if (!state.video) { setMsg('#exportMsg', 'No base video selected.', 'err'); return; }
   if (state.level >= 2) { comingSoon(state.level); return; }
-  if (state.level === 1 && !state.subs.length) { setMsg('#exportMsg', 'Level 1 needs a subtitle set — pick one or drop to Level 0.', 'err'); return; }
+  if (state.level === 1 && !state.subs.length) { setMsg('#exportMsg', 'Level 1 needs a subtitle set — pick one or switch to Level 0.', 'err'); return; }
   $('#exportBtn').disabled = true;
   setMsg('#exportMsg', '', '');
   $('#progressWrap').hidden = false;
