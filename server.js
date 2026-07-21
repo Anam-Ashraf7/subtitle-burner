@@ -216,11 +216,13 @@ const SUB_FONTS = {
   pacifico: { name: 'Pacifico', bold: false },
 };
 const SIZE_FACTOR = { small: 0.045, medium: 0.055, large: 0.07 };
-const hexToAss = (hex) => {
+// ASS colour is &HAABBGGRR — alpha 00 = opaque, FF = transparent.
+const assColor = (hex, alpha = '00') => {
   const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '#ffffff'));
   const v = m ? m[1] : 'ffffff';
-  return `&H00${v.slice(4, 6)}${v.slice(2, 4)}${v.slice(0, 2)}`.toUpperCase(); // &H00BBGGRR
+  return `&H${alpha}${v.slice(4, 6)}${v.slice(2, 4)}${v.slice(0, 2)}`.toUpperCase();
 };
+const hexToAss = (hex) => assColor(hex, '00');
 function resolveStyle(style = {}) {
   const f = SUB_FONTS[style.font] || SUB_FONTS.dejavu;
   const factor = SIZE_FACTOR[style.size] || SIZE_FACTOR.medium;
@@ -231,10 +233,11 @@ function buildAss(subs, w, h, style = {}) {
   const s = resolveStyle(style);
   const fontSize = Math.round(h * s.factor);
   const margin = Math.round(h * 0.06);
-  // BorderStyle 3 = opaque/box background; 1 = outline+shadow (no box).
+  const bgHex = /^#?([0-9a-f]{6})$/i.test(String(style.bgColor || '')) ? style.bgColor : '#000000';
+  // BorderStyle 3 = box (filled with OutlineColour); 1 = text outline + shadow (no box).
   let borderStyle, outline, shadow, back, outlineCol;
   if (s.bg === 'none') { borderStyle = 1; outline = Math.max(2, Math.round(h * 0.004)); shadow = Math.max(1, Math.round(h * 0.002)); back = '&H00000000'; outlineCol = '&H00000000'; }
-  else { borderStyle = 3; outline = Math.max(6, Math.round(h * 0.008)); shadow = 0; outlineCol = '&H00000000'; back = s.bg === 'solid' ? '&H00000000' : '&H80000000'; }
+  else { borderStyle = 3; outline = Math.max(6, Math.round(h * 0.008)); shadow = 0; back = '&H00000000'; outlineCol = assColor(bgHex, s.bg === 'solid' ? '00' : '80'); }
   const head = `[Script Info]
 ScriptType: v4.00+
 PlayResX: ${w}

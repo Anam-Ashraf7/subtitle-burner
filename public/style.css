@@ -111,12 +111,11 @@ body.studio-open .nav { background: #141414; border-bottom: 1px solid var(--line
   font-size: calc(var(--sub-factor, 5.5) * 1cqh);
   color: var(--sub-color, #fff); font-family: var(--sub-font, 'DejaVu Sans'); font-weight: var(--sub-weight, 700);
   line-height: 1.35; padding: .08em .4em; border-radius: 3px;
+  background: var(--sub-bg, rgba(0,0,0,.5));
   box-decoration-break: clone; -webkit-box-decoration-break: clone;
 }
-/* background modes mirror the ASS BorderStyle choices */
-.sub-overlay.bg-box span { background: rgba(0,0,0,.5); }
-.sub-overlay.bg-solid span { background: #000; }
-.sub-overlay.bg-none span { background: transparent; text-shadow: 0 0 3px #000, 1px 1px 2px #000; -webkit-text-stroke: .5px #000; }
+/* no box -> rely on a text outline for legibility (mirrors ASS BorderStyle 1) */
+.sub-overlay.bg-none span { text-shadow: 0 0 3px #000, 1px 1px 2px #000; -webkit-text-stroke: .5px #000; }
 .black-overlay { position: absolute; inset: 0; background: #000; display: flex; align-items: center; justify-content: center; text-align: center; padding: 8%; z-index: 3; }
 .black-overlay #blackText { color: #fff; font-size: clamp(16px, 2.8vw, 32px); font-weight: 700; line-height: 1.4; white-space: pre-wrap; }
 .preview-controls { display: flex; gap: 10px; flex-wrap: wrap; }

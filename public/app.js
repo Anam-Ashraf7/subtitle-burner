@@ -1,12 +1,13 @@
 const $ = (s) => document.querySelector(s);
 const state = { video: null, templateName: null, intro: [], subs: [], outro: [], level: 0, introOutro: false, tplIntro: [], tplOutro: [],
-  subStyle: { font: 'dejavu', size: 'medium', color: '#ffffff', bg: 'box' } };
+  subStyle: { font: 'dejavu', size: 'medium', color: '#ffffff', bg: 'box', bgColor: '#000000' } };
 let cueSeq = 0;
 
 // Preview styling that mirrors the server's libass output (WYSIWYG)
 const FONT_CSS = { dejavu: "'DejaVu Sans'", poppins: "'Poppins'", ptserif: "'PT Serif'", anton: "'Anton'", bebas: "'Bebas Neue'", pacifico: "'Pacifico'" };
 const FONT_WEIGHT = { dejavu: 700, poppins: 700, ptserif: 700, anton: 400, bebas: 400, pacifico: 400 };
 const SIZE_CQH = { small: 4.5, medium: 5.5, large: 7.0 }; // matches server SIZE_FACTOR * 100
+const hexToRgba = (hex, a) => { const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '#000000'); const [r, g, b] = m ? [1, 2, 3].map((i) => parseInt(m[i], 16)) : [0, 0, 0]; return `rgba(${r},${g},${b},${a})`; };
 function applySubStyle() {
   const st = state.subStyle;
   const o = document.querySelector('#subOverlay');
@@ -14,6 +15,10 @@ function applySubStyle() {
   o.style.setProperty('--sub-weight', FONT_WEIGHT[st.font] || 700);
   o.style.setProperty('--sub-color', st.color || '#ffffff');
   o.style.setProperty('--sub-factor', SIZE_CQH[st.size] || 5.5);
+  let bg = 'transparent';
+  if (st.bg === 'solid') bg = st.bgColor || '#000000';
+  else if (st.bg !== 'none') bg = hexToRgba(st.bgColor || '#000000', 0.5);
+  o.style.setProperty('--sub-bg', bg);
   o.classList.remove('bg-box', 'bg-solid', 'bg-none');
   o.classList.add('bg-' + (st.bg || 'box'));
 }
@@ -209,6 +214,7 @@ function closeStudio() {
 $('#fontSel').addEventListener('change', (e) => { state.subStyle.font = e.target.value; applySubStyle(); });
 $('#sizeSel').addEventListener('change', (e) => { state.subStyle.size = e.target.value; applySubStyle(); });
 $('#bgSel').addEventListener('change', (e) => { state.subStyle.bg = e.target.value; applySubStyle(); });
+$('#bgColorSel').addEventListener('input', (e) => { state.subStyle.bgColor = e.target.value; applySubStyle(); });
 $('#colorSel').addEventListener('input', (e) => { state.subStyle.color = e.target.value; applySubStyle(); });
 
 // ===================== MODE BADGE (studio) =====================
