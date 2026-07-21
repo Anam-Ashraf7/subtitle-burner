@@ -1,6 +1,7 @@
 const $ = (s) => document.querySelector(s);
-const state = { video: null, templateName: null, intro: [], subs: [], outro: [], level: 0 };
+const state = { video: null, templateName: null, intro: [], subs: [], outro: [], level: 0, introOutro: false, tplIntro: [], tplOutro: [] };
 let cueSeq = 0;
+const mapCues = (arr, prefix) => (arr || []).map((s) => ({ id: `${prefix}-${cueSeq++}`, ...s }));
 
 const video = $('#video');
 const subOverlay = $('#subOverlay');
@@ -53,7 +54,7 @@ function renderVideoRail(videos) {
 function renderLevel0Card() {
   const rail = $('#railLevel0');
   rail.innerHTML = '';
-  const el = card({ cls: 'action level0', thumbHtml: placeholderThumb('✎'), cap: 'Intro & Outro only', sub: 'no subtitles — add text in the studio', onClick: () => selectLevel0(el) });
+  const el = card({ cls: 'action level0', thumbHtml: placeholderThumb('✎'), cap: 'Intro & Outro', sub: 'black-screen text — combines with subtitles', onClick: () => toggleIntroOutro(el) });
   rail.appendChild(el);
 }
 
@@ -85,12 +86,16 @@ function selectVideo(v, el) {
 
 function deriveLevel() { state.level = state.subs.length ? 1 : 0; }
 
-function selectLevel0(el) {
-  state.subs = []; // "Intro & Outro only" — no subtitles
-  state.templateName = null;
-  deriveLevel();
-  document.querySelectorAll('#railLevel1 .card').forEach((c) => c.classList.remove('selected'));
-  document.querySelectorAll('#railLevel0 .card').forEach((c) => c.classList.toggle('selected', c === el));
+// Intro & Outro is an independent layer — toggles on/off, stacks with subtitles.
+function toggleIntroOutro(el) {
+  state.introOutro = !state.introOutro;
+  el.classList.toggle('selected', state.introOutro);
+  if (state.introOutro) {
+    if (!state.intro.length) state.intro = mapCues(state.tplIntro, 'intro'); // seed from chosen template if any
+    if (!state.outro.length) state.outro = mapCues(state.tplOutro, 'outro');
+  } else {
+    state.intro = []; state.outro = [];
+  }
   updateSelbar();
 }
 
@@ -101,14 +106,21 @@ async function selectTemplate(t, el) {
   } catch { alert('Failed to load template.'); }
 }
 
+// Subtitle layer — independent of Intro & Outro. Click a selected one to clear it.
 function applyCues(cues, name, el) {
+  const already = el && el.classList.contains('selected');
+  document.querySelectorAll('#railLevel1 .card').forEach((c) => c.classList.remove('selected'));
+  if (already) { // toggle off
+    state.subs = []; state.templateName = null;
+    deriveLevel(); updateSelbar(); return;
+  }
   state.templateName = name;
-  state.subs = (cues.subs || []).map((s) => ({ id: `sub-${cueSeq++}`, ...s }));
-  if (!state.intro.length) state.intro = (cues.intro || []).map((s) => ({ id: `intro-${cueSeq++}`, ...s }));
-  if (!state.outro.length) state.outro = (cues.outro || []).map((s) => ({ id: `outro-${cueSeq++}`, ...s }));
+  state.subs = mapCues(cues.subs, 'sub');
+  state.tplIntro = cues.intro || []; // remembered so Intro & Outro can seed from it
+  state.tplOutro = cues.outro || [];
+  if (state.introOutro && !state.intro.length) { state.intro = mapCues(state.tplIntro, 'intro'); state.outro = mapCues(state.tplOutro, 'outro'); }
   deriveLevel();
-  document.querySelectorAll('#railLevel0 .card').forEach((c) => c.classList.remove('selected'));
-  document.querySelectorAll('#railLevel1 .card').forEach((c) => c.classList.toggle('selected', c === el));
+  if (el) el.classList.add('selected');
   updateSelbar();
 }
 
@@ -127,7 +139,13 @@ $('#xlsxInput').addEventListener('change', async (e) => {
   e.target.value = '';
 });
 
-function modeName() { return state.subs.length ? 'Subtitles' : 'Intro & Outro only'; }
+function activeLayers() {
+  const parts = [];
+  if (state.introOutro || state.intro.length || state.outro.length) parts.push('Intro & Outro');
+  if (state.subs.length) parts.push('Subtitles');
+  return parts;
+}
+function modeName() { const p = activeLayers(); return p.length ? p.join(' + ') : 'Video only'; }
 function updateSelbar() {
   $('#selVideo').textContent = state.video ? `🎬 ${state.video.name}` : 'No video';
   $('#selLevel').textContent = modeName();
