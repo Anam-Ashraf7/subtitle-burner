@@ -218,6 +218,8 @@ function switchTab(tab) {
 
 const SPK_COLORS = ['#6ea8fe', '#f6c945', '#7ee787', '#ff7b9c', '#c39bff', '#4fd1c5', '#ff9d5c'];
 function speakerColor(name) { let h = 0; for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return SPK_COLORS[h % SPK_COLORS.length]; }
+function initials(name) { const w = String(name).trim().split(/\s+/); return (((w[0] || '')[0] || '') + ((w[1] || '')[0] || '')).toUpperCase() || '•'; }
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 function updateTabCounts() {
   const labels = { intro: 'Intro', subs: 'Subtitles', outro: 'Outro' };
   document.querySelectorAll('.tab').forEach((t) => { const k = t.dataset.tab; t.innerHTML = `${labels[k]} <span class="badge">${state[k].length}</span>`; });
@@ -243,22 +245,27 @@ function renderPane(kind) {
     pane.appendChild(empty);
   }
 
-  list.forEach((c) => {
+  list.forEach((c, idx) => {
     const div = document.createElement('div');
-    div.className = 'cue';
+    div.className = 'cue' + (idx === 0 ? ' first' : '');
     div.dataset.id = c.id;
-    const color = speakerColor(c.person || kind);
+    const color = isScreen ? 'var(--red)' : speakerColor(c.person || kind);
+    const avatarTxt = isScreen ? String(idx + 1) : initials(c.person || kind);
+    const nameTxt = isScreen ? `${cap(kind)} screen ${idx + 1}` : (c.person || 'Speaker');
     const timeLabel = isScreen ? `${c.duration ?? autoDur(c.text)}s` : `${fmt(c.start)} – ${fmt(c.end)}`;
     div.innerHTML = `
-      <div class="cue-head">
-        <span class="speaker" style="--sc:${color}">${escapeHtml(c.person || kind)}</span>
-        <span class="cue-time">${!isScreen ? `<button class="jump" data-jump="${c.start}">▶ ${timeLabel}</button>` : `⏱ ${timeLabel}`}</span>
-      </div>
-      <textarea rows="2" placeholder="${isScreen ? 'Screen text…' : 'Subtitle text…'}">${escapeHtml(c.text || '')}</textarea>
-      <div class="cue-foot">
-        <span class="charcount"></span>
-        ${c.oldText ? `<span class="old" title="original text">was: ${escapeHtml(c.oldText)}</span>` : '<span></span>'}
-        ${isScreen ? `<span class="screen-ctrl"><label>dur</label><input type="number" step="0.1" min="0.3" value="${c.duration ?? autoDur(c.text)}" /><button class="mini del" title="remove">✕</button></span>` : ''}
+      <div class="avatar" style="--sc:${color}">${escapeHtml(avatarTxt)}</div>
+      <div class="cue-body">
+        <div class="cue-head">
+          <span class="speaker" style="--sc:${color}">${escapeHtml(nameTxt)}</span>
+          <span class="cue-time">${!isScreen ? `<button class="jump" style="--sc:${color}" data-jump="${c.start}">▶ ${timeLabel}</button>` : `⏱ ${timeLabel}`}</span>
+        </div>
+        <textarea rows="2" placeholder="${isScreen ? 'Screen text…' : 'Subtitle text…'}">${escapeHtml(c.text || '')}</textarea>
+        <div class="cue-foot">
+          <span class="charcount"></span>
+          ${c.oldText ? `<span class="old" title="original text">was: ${escapeHtml(c.oldText)}</span>` : '<span></span>'}
+          ${isScreen ? `<span class="screen-ctrl"><label>dur</label><input type="number" step="0.1" min="0.3" value="${c.duration ?? autoDur(c.text)}" /><button class="mini del" title="remove">✕</button></span>` : ''}
+        </div>
       </div>`;
     const ta = div.querySelector('textarea');
     const cc = div.querySelector('.charcount');
