@@ -191,10 +191,23 @@ const STATES = ['Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Color
 const PARTIES = [['democrat', 'Democrat'], ['republican', 'Republican']];
 const POSITIONS = ['Mayor', 'Governor', 'Lieutenant Governor', 'Attorney General', 'Secretary of State', 'U.S. Senator', 'U.S. Representative', 'State Senator', 'State Representative', 'Council member', 'County Commissioner', 'Sheriff', 'District Attorney', 'Judge', 'School Board Member', 'City Clerk', 'Treasurer', 'Assessor', 'Auditor', 'Comptroller'];
 
-// placeholders that map onto the standard Webflow fields; the rest become dynamic inputs
-const MAPPED = { FullNameX: 'fullname', OfficeX: 'position', CityX: 'city' };
 const prettyToken = (t) => t.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])([0-9])/g, '$1 $2');
-const dynamicTokens = () => state.placeholders.filter((t) => !MAPPED[t] && t !== 'LastNameX');
+// EVERY placeholder in the template becomes its own field.
+const dynamicTokens = () => [...new Set(state.placeholders)];
+
+// Standard fields conveniently auto-fill the matching placeholder field (until the
+// user edits that field directly). LastNameX derives from the full name's last word.
+function syncStandardToTokens() {
+  const fn = $('#f-fullname').value.trim();
+  const set = (tok, val) => { const inp = document.querySelector(`#dynFields [data-token="${tok}"]`); if (inp && !inp.dataset.dirty && val) inp.value = val; };
+  set('FullNameX', fn);
+  set('LastNameX', fn ? fn.split(/\s+/).pop() : '');
+  set('OfficeX', $('#f-position').value);
+  set('CityX', $('#f-city').value.trim());
+}
+$('#f-fullname').addEventListener('input', syncStandardToTokens);
+$('#f-position').addEventListener('change', syncStandardToTokens);
+$('#f-city').addEventListener('input', syncStandardToTokens);
 
 function fillOnce() {
   const sel = $('#f-state'); if (sel.options.length) return;
@@ -209,22 +222,22 @@ function openForm() {
   $('#formTitle').textContent = state.templateName || state.video.name;
   const typeLabel = { '0': 'No text', '1': 'Subtitles', '2': 'Voiceover', '3': 'Head swap' }[state.templateType];
   $('#formType').textContent = typeLabel || ''; $('#formType').style.display = typeLabel ? '' : 'none';
-  // show which template placeholder each standard field fills
-  const setMap = (id, toks) => { const present = toks.filter((t) => state.placeholders.includes(t)); $('#' + id).textContent = present.length ? '· fills ' + present.map((t) => `[${t}]`).join(', ') : ''; };
-  setMap('map-fullname', ['FullNameX', 'LastNameX']);
-  setMap('map-position', ['OfficeX']);
-  setMap('map-city', ['CityX']);
-  // dynamic fields for template-specific placeholders
+  // hints removed — every placeholder now has its own field below
+  ['map-fullname', 'map-position', 'map-city'].forEach((id) => ($('#' + id).textContent = ''));
+  // one field for EVERY placeholder found in the script (any [Token] / (Token])
   const dyn = $('#dynFields'); dyn.innerHTML = '';
   const toks = dynamicTokens();
   if (toks.length) {
-    dyn.insertAdjacentHTML('beforeend', '<div class="dyn-head">Script details</div>');
+    dyn.insertAdjacentHTML('beforeend', '<div class="dyn-head">Script placeholders</div><div class="dyn-note">A field for every ' + '[placeholder]' + ' in the script. Ones matching the fields above pre-fill automatically — edit any of them freely.</div>');
     toks.forEach((t) => {
       const wrap = document.createElement('div'); wrap.className = 'fld';
-      wrap.innerHTML = `<span class="fld-label"><i>◆</i> ${escapeHtml(prettyToken(t))}</span><input class="tin dyn-in" data-token="${t}" type="text" placeholder="Enter ${escapeHtml(prettyToken(t)).toLowerCase()}" />`;
+      wrap.innerHTML = `<span class="fld-label"><i>◆</i> ${escapeHtml(prettyToken(t))} <span class="tok">[${escapeHtml(t)}]</span></span><input class="tin dyn-in" data-token="${t}" type="text" placeholder="Enter ${escapeHtml(prettyToken(t)).toLowerCase()}" />`;
+      const inp = wrap.querySelector('input');
+      inp.addEventListener('input', () => { inp.dataset.dirty = '1'; });
       dyn.appendChild(wrap);
     });
   }
+  syncStandardToTokens(); // pre-fill overlapping tokens from any values already typed
   $('#browseView').hidden = true; $('#selbar').hidden = true; $('#formView').hidden = false;
   window.scrollTo({ top: 0 });
 }
@@ -236,12 +249,14 @@ function fillPlaceholders(text, values) {
 
 $('#genForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  const fullName = $('#f-fullname').value.trim();
   const values = {};
-  if (fullName) { values.FullNameX = fullName; values.LastNameX = fullName.split(/\s+/).pop(); }
-  const pos = $('#f-position').value; if (pos) values.OfficeX = pos;
-  const city = $('#f-city').value.trim(); if (city) values.CityX = city;
+  // per-placeholder fields are the source of truth
   document.querySelectorAll('#dynFields .dyn-in').forEach((inp) => { if (inp.value.trim()) values[inp.dataset.token] = inp.value.trim(); });
+  // fallback to the standard fields for any overlapping token left blank
+  const fullName = $('#f-fullname').value.trim();
+  if (fullName) { values.FullNameX ??= fullName; values.LastNameX ??= fullName.split(/\s+/).pop(); }
+  if ($('#f-position').value) values.OfficeX ??= $('#f-position').value;
+  if ($('#f-city').value.trim()) values.CityX ??= $('#f-city').value.trim();
 
   // build filled cues from the raw template text
   const fill = (arr) => arr.map((c) => ({ ...c, text: fillPlaceholders(c.text, values) }));
