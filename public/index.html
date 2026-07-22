@@ -64,6 +64,53 @@
   </div>
 </div>
 
+<!-- ===================== FORM VIEW ===================== -->
+<section id="formView" class="formview" hidden>
+  <div class="studio-bar">
+    <button id="formBack" class="btn-back">← Library</button>
+    <div class="studio-heading">
+      <span class="sh-now">DETAILS</span>
+      <span id="formTitle" class="sh-title">—</span>
+      <span id="formType" class="sh-mode"></span>
+    </div>
+  </div>
+  <div class="form-wrap">
+    <p class="form-intro">Fill in the details — we'll drop them into the script, then open the editor.</p>
+    <form id="genForm" class="genform">
+      <div class="fld"><span class="fld-label"><i>1</i> Full name</span>
+        <input id="f-fullname" class="tin" type="text" placeholder="Enter full name" required />
+      </div>
+      <div class="fld"><span class="fld-label"><i>2</i> Email <small>where you'll receive the video</small></span>
+        <input id="f-email" class="tin" type="email" placeholder="you@example.com" />
+      </div>
+      <div class="fld"><span class="fld-label"><i>3</i> Position</span>
+        <select id="f-position" class="tin"></select>
+      </div>
+      <div class="fld"><span class="fld-label"><i>4</i> Location</span>
+        <select id="f-state" class="tin" style="margin-bottom:8px"></select>
+        <div class="loc-row">
+          <input id="f-city" class="tin" type="text" placeholder="City" />
+          <input id="f-county" class="tin" type="text" placeholder="County (optional)" />
+        </div>
+      </div>
+      <div class="fld"><span class="fld-label"><i>5</i> Party affiliation</span>
+        <select id="f-party" class="tin"></select>
+      </div>
+      <div class="fld"><span class="fld-label"><i>6</i> Style</span>
+        <select id="f-style" class="tin">
+          <option value="">Choose style…</option>
+          <option value="cartoon">Cartoon</option>
+          <option value="realistic">Realistic</option>
+          <option value="meme">Meme</option>
+          <option value="high-end-video">High-end (face swap &amp; lip sync)</option>
+        </select>
+      </div>
+      <div id="dynFields"></div>
+      <button type="submit" class="btn-generate">Generate video →</button>
+    </form>
+  </div>
+</section>
+
 <!-- ===================== STUDIO VIEW ===================== -->
 <section id="studio" class="studio" hidden>
   <div class="studio-bar">

@@ -32,11 +32,10 @@ function listVideos() {
     .sort()
     .map((f) => ({ id: f, name: prettyName(f), url: `/videos/${encodeURIComponent(f)}` }));
 }
+const TYPE_LABEL = { '0': 'No text', '1': 'Subtitles', '2': 'Voiceover', '3': 'Head swap' };
+function titleCase(s) { return String(s).replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()); }
 function listTemplates() {
-  return fs.readdirSync(TEMPLATES_DIR)
-    .filter((f) => path.extname(f).toLowerCase() === '.xlsx')
-    .sort()
-    .map((f) => ({ id: f, name: prettyName(f) }));
+  return [...templates().values()].map((t) => ({ id: t.id, name: titleCase(t.name), type: t.type, typeLabel: TYPE_LABEL[t.type] || '', subs: t.subs.length, placeholders: t.placeholders }));
 }
 function prettyName(f) {
   return path.basename(f, path.extname(f)).replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -67,13 +66,18 @@ async function seedSampleVideos() {
 const READ_SPEED = 15; // chars/sec for auto black-screen duration
 const MIN_SCREEN = 1.5; // seconds
 
+// Accepts Excel time numbers (fraction of a day), Date objects, and text forms
+// like ":44", "1:23", "00:00:01.2". Returns null for non-time labels (title/intro/…).
 function timeCellToSeconds(v) {
-  // xlsx time cells come through as a fraction of a day (number) with cellDates off,
-  // or as a Date when cellDates on. We read raw values, so handle both.
-  if (v instanceof Date) {
-    return v.getUTCHours() * 3600 + v.getUTCMinutes() * 60 + v.getUTCSeconds() + v.getUTCMilliseconds() / 1000;
-  }
-  if (typeof v === 'number') return v * 86400; // fraction of day
+  if (v == null) return null;
+  if (v instanceof Date) return v.getUTCHours() * 3600 + v.getUTCMinutes() * 60 + v.getUTCSeconds() + v.getUTCMilliseconds() / 1000;
+  if (typeof v === 'number') return v * 86400;
+  const s = String(v).trim();
+  if (!s) return null;
+  let m = /^(\d+):(\d{1,2}):(\d{1,2}(?:\.\d+)?)$/.exec(s); // H:M:S
+  if (m) return +m[1] * 3600 + +m[2] * 60 + parseFloat(m[3]);
+  m = /^(\d*):(\d{1,2}(?:\.\d+)?)$/.exec(s); // M:S or :S
+  if (m) return (m[1] ? +m[1] : 0) * 60 + parseFloat(m[2]);
   return null;
 }
 
@@ -82,54 +86,90 @@ function autoDuration(text) {
   return Math.max(MIN_SCREEN, +(n / READ_SPEED).toFixed(2));
 }
 
-function parseWorkbook(buf) {
-  const wb = XLSX.read(buf); // raw: time cells come as fraction-of-day numbers (avoids TZ shift)
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
-  const header = rows[0].map((h) => String(h || '').trim());
-  const col = (name) => header.indexOf(name);
-  const ci = {
-    start: col('timestamp_start'),
-    end: col('timestamp_end'),
-    person: col('Person'),
-    text: col('new_text_1'),
-    old: col('text'),
-  };
+const slug = (s) => String(s).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+// Dynamic fields look like [FullNameX] (some sheets have a stray "(" typo).
+const PLACEHOLDER_RE = /[[(]\s*([A-Za-z][A-Za-z0-9]*)\s*\]/g;
+function collectPlaceholders(text, set) {
+  let m; PLACEHOLDER_RE.lastIndex = 0;
+  while ((m = PLACEHOLDER_RE.exec(text || ''))) set.add(m[1]);
+}
 
-  const subs = [];
-  const intro = [];
-  const outro = [];
-  for (let r = 1; r < rows.length; r++) {
-    const row = rows[r];
-    if (!row) continue;
+// Turn a template group's rows into intro / subs / outro cues + placeholder list.
+function rowsToCues(rows, ci) {
+  const intro = [], outro = [], subs = [];
+  const ph = new Set();
+  for (const row of rows) {
     const person = String(row[ci.person] ?? '').trim();
-    const startRaw = row[ci.start];
     const text = row[ci.text] == null ? '' : String(row[ci.text]).trim();
-    const oldText = row[ci.old] == null ? '' : String(row[ci.old]).trim();
-    const label = String(startRaw ?? '').trim().toLowerCase();
-
-    // meta data rows (title/description) -> skipped entirely
-    if (person.toLowerCase() === 'meta data') continue;
-
-    const startSec = timeCellToSeconds(startRaw);
+    if (person.toLowerCase() === 'meta data') continue; // title/description not rendered
+    collectPlaceholders(text, ph);
+    const label = String(row[ci.start] ?? '').trim().toLowerCase();
+    const startSec = timeCellToSeconds(row[ci.start]);
     if (startSec == null) {
-      // non-time row -> intro/outro black screen
-      if (label === 'intro') intro.push({ text, oldText, person });
-      else if (label === 'outro') outro.push({ text, oldText, person });
-      // any other non-time label is ignored
+      if (label === 'intro') intro.push({ text, person });
+      else if (label === 'outro') outro.push({ text, person });
       continue;
     }
-    const endSec = timeCellToSeconds(row[ci.end]);
     if (!text) continue;
-    subs.push({ start: startSec, end: endSec ?? startSec + 2, text, oldText, person });
+    const endSec = timeCellToSeconds(row[ci.end]);
+    subs.push({ start: startSec, end: endSec != null ? endSec : startSec + 2, text, person });
   }
-
-  // assign auto durations + ids to screens
-  const introScreens = intro.map((s, i) => ({ id: `intro-${i}`, ...s, duration: autoDuration(s.text) }));
-  const outroScreens = outro.map((s, i) => ({ id: `outro-${i}`, ...s, duration: autoDuration(s.text) }));
-  const subCues = subs.map((s, i) => ({ id: `sub-${i}`, ...s }));
-  return { intro: introScreens, subs: subCues, outro: outroScreens };
+  return {
+    intro: intro.map((s, i) => ({ id: `intro-${i}`, ...s, duration: autoDuration(s.text) })),
+    outro: outro.map((s, i) => ({ id: `outro-${i}`, ...s, duration: autoDuration(s.text) })),
+    subs: subs.map((s, i) => ({ id: `sub-${i}`, ...s })),
+    placeholders: [...ph],
+  };
 }
+
+// A sheet may hold multiple templates (grouped by template_name). Returns an array.
+function parseTemplates(buf) {
+  const wb = XLSX.read(buf);
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+  const header = (rows[0] || []).map((h) => String(h || '').trim());
+  const col = (name) => header.indexOf(name);
+  const ci = { type: col('Template type'), name: col('template_name'), start: col('timestamp_start'), end: col('timestamp_end'), person: col('Person'), text: col('text') };
+  const groups = new Map();
+  let curName = null;
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row || row.every((c) => c == null)) continue;
+    const name = ci.name >= 0 && row[ci.name] != null ? String(row[ci.name]).trim() : '';
+    if (name) curName = name;
+    if (!curName) continue;
+    if (!groups.has(curName)) groups.set(curName, { name: curName, type: '', rows: [] });
+    const g = groups.get(curName);
+    if (g.type === '' && ci.type >= 0 && row[ci.type] != null) g.type = String(row[ci.type]).trim();
+    g.rows.push(row);
+  }
+  return [...groups.values()].map((g) => {
+    const cues = rowsToCues(g.rows, ci);
+    return { id: slug(g.name), name: g.name, type: g.type, ...cues };
+  });
+}
+
+// Back-compat: a single parsed set (first template) for uploaded files.
+function parseWorkbook(buf) {
+  const t = parseTemplates(buf);
+  return t[0] || { intro: [], subs: [], outro: [], placeholders: [] };
+}
+
+// Parse every template file once and cache by id.
+let TEMPLATE_CACHE = null;
+function loadTemplates() {
+  const map = new Map();
+  for (const f of fs.readdirSync(TEMPLATES_DIR).filter((f) => path.extname(f).toLowerCase() === '.xlsx').sort()) {
+    try {
+      for (const t of parseTemplates(fs.readFileSync(path.join(TEMPLATES_DIR, f)))) {
+        if (t.id) map.set(t.id, t);
+      }
+    } catch (e) { console.error('template parse failed', f, e.message); }
+  }
+  TEMPLATE_CACHE = map;
+  return map;
+}
+const templates = () => TEMPLATE_CACHE || loadTemplates();
 
 async function probe(videoPath) {
   return new Promise((resolve, reject) => {
@@ -172,13 +212,11 @@ function resolveTemplate(id) {
 app.get('/api/videos', (req, res) => res.json(listVideos()));
 app.get('/api/subtitle-templates', (req, res) => res.json(listTemplates()));
 
-// parsed cues for a named template
+// parsed cues (+ placeholders) for a named template
 app.get('/api/subtitle-templates/:id', (req, res) => {
-  const p = resolveTemplate(req.params.id);
-  if (!p) return res.status(404).json({ error: 'template not found' });
-  try {
-    res.json(parseWorkbook(fs.readFileSync(p)));
-  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+  const t = templates().get(req.params.id);
+  if (!t) return res.status(404).json({ error: 'template not found' });
+  res.json({ intro: t.intro, subs: t.subs, outro: t.outro, placeholders: t.placeholders, type: t.type, name: titleCase(t.name) });
 });
 
 // upload-your-own subtitle xlsx (no video) -> parsed cues

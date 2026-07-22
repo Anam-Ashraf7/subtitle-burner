@@ -1,5 +1,5 @@
 const $ = (s) => document.querySelector(s);
-const state = { video: null, templateName: null, intro: [], subs: [], outro: [], level: 0, introOutro: false, tplIntro: [], tplOutro: [],
+const state = { video: null, templateName: null, templateType: '', placeholders: [], rawSubs: [], intro: [], subs: [], outro: [], level: 0, introOutro: false, tplIntro: [], tplOutro: [],
   subStyle: { font: 'dejavu', size: 'medium', color: '#ffffff', bg: 'box', bgColor: '#000000' } };
 let cueSeq = 0;
 
@@ -132,14 +132,19 @@ function applyCues(cues, name, el) {
   const already = el && el.classList.contains('selected');
   document.querySelectorAll('#railLevel1 .card').forEach((c) => c.classList.remove('selected'));
   if (already) { // toggle off
-    state.subs = []; state.templateName = null;
+    state.subs = []; state.templateName = null; state.placeholders = []; state.rawSubs = [];
     deriveLevel(); updateSelbar(); return;
   }
   state.templateName = name;
+  state.templateType = cues.type || '';
+  state.placeholders = cues.placeholders || [];
+  state.rawSubs = cues.subs || [];       // keep raw (with [placeholders]) for filling
   state.subs = mapCues(cues.subs, 'sub');
-  state.tplIntro = cues.intro || []; // remembered so Intro & Outro can seed from it
+  state.tplIntro = cues.intro || [];     // remembered so Intro & Outro can seed from it
   state.tplOutro = cues.outro || [];
-  if (state.introOutro && !state.intro.length) { state.intro = mapCues(state.tplIntro, 'intro'); state.outro = mapCues(state.tplOutro, 'outro'); }
+  // include the template's intro/outro by default (part of the script)
+  state.introOutro = (state.tplIntro.length || state.tplOutro.length) > 0;
+  document.querySelectorAll('#railLevel0 .card').forEach((c) => c.classList.toggle('selected', state.introOutro));
   deriveLevel();
   if (el) el.classList.add('selected');
   updateSelbar();
@@ -176,9 +181,72 @@ function updateSelbar() {
   $('#continueBtn').disabled = !state.video;
 }
 
-// ===================== CONTINUE → STUDIO =====================
-$('#continueBtn').addEventListener('click', openStudio);
+// ===================== CONTINUE → FORM → STUDIO =====================
+$('#continueBtn').addEventListener('click', openForm);
 $('#backBtn').addEventListener('click', closeStudio);
+$('#formBack').addEventListener('click', () => { $('#formView').hidden = true; $('#browseView').hidden = false; $('#selbar').hidden = false; });
+
+// ---- Form data ----
+const STATES = ['Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico', 'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming', 'District of Columbia'];
+const PARTIES = [['democrat', 'Democrat'], ['republican', 'Republican']];
+const POSITIONS = ['Mayor', 'Governor', 'Lieutenant Governor', 'Attorney General', 'Secretary of State', 'U.S. Senator', 'U.S. Representative', 'State Senator', 'State Representative', 'Council member', 'County Commissioner', 'Sheriff', 'District Attorney', 'Judge', 'School Board Member', 'City Clerk', 'Treasurer', 'Assessor', 'Auditor', 'Comptroller'];
+
+// placeholders that map onto the standard Webflow fields; the rest become dynamic inputs
+const MAPPED = { FullNameX: 'fullname', OfficeX: 'position', CityX: 'city' };
+const prettyToken = (t) => t.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])([0-9])/g, '$1 $2');
+const dynamicTokens = () => state.placeholders.filter((t) => !MAPPED[t] && t !== 'LastNameX');
+
+function fillOnce() {
+  const sel = $('#f-state'); if (sel.options.length) return;
+  $('#f-position').innerHTML = '<option value="">Choose title…</option>' + POSITIONS.map((p) => `<option>${p}</option>`).join('');
+  $('#f-state').innerHTML = '<option value="">Choose state…</option>' + STATES.map((s) => `<option${s === 'Wisconsin' ? ' selected' : ''}>${s}</option>`).join('');
+  $('#f-party').innerHTML = '<option value="">Choose party…</option>' + PARTIES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+}
+
+function openForm() {
+  if (!state.video) return;
+  fillOnce();
+  $('#formTitle').textContent = state.templateName || state.video.name;
+  const typeLabel = { '0': 'No text', '1': 'Subtitles', '2': 'Voiceover', '3': 'Head swap' }[state.templateType];
+  $('#formType').textContent = typeLabel || ''; $('#formType').style.display = typeLabel ? '' : 'none';
+  // dynamic fields for template-specific placeholders
+  const dyn = $('#dynFields'); dyn.innerHTML = '';
+  const toks = dynamicTokens();
+  if (toks.length) {
+    dyn.insertAdjacentHTML('beforeend', '<div class="dyn-head">Script details</div>');
+    toks.forEach((t) => {
+      const wrap = document.createElement('div'); wrap.className = 'fld';
+      wrap.innerHTML = `<span class="fld-label"><i>◆</i> ${escapeHtml(prettyToken(t))}</span><input class="tin dyn-in" data-token="${t}" type="text" placeholder="Enter ${escapeHtml(prettyToken(t)).toLowerCase()}" />`;
+      dyn.appendChild(wrap);
+    });
+  }
+  $('#browseView').hidden = true; $('#selbar').hidden = true; $('#formView').hidden = false;
+  window.scrollTo({ top: 0 });
+}
+
+// replace [Token] (and stray "(Token]") with entered values
+function fillPlaceholders(text, values) {
+  return String(text).replace(/[[(]\s*([A-Za-z][A-Za-z0-9]*)\s*\]/g, (m, tok) => (values[tok] != null && values[tok] !== '' ? values[tok] : m));
+}
+
+$('#genForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const fullName = $('#f-fullname').value.trim();
+  const values = {};
+  if (fullName) { values.FullNameX = fullName; values.LastNameX = fullName.split(/\s+/).pop(); }
+  const pos = $('#f-position').value; if (pos) values.OfficeX = pos;
+  const city = $('#f-city').value.trim(); if (city) values.CityX = city;
+  document.querySelectorAll('#dynFields .dyn-in').forEach((inp) => { if (inp.value.trim()) values[inp.dataset.token] = inp.value.trim(); });
+
+  // build filled cues from the raw template text
+  const fill = (arr) => arr.map((c) => ({ ...c, text: fillPlaceholders(c.text, values) }));
+  state.subs = mapCues(fill(state.rawSubs), 'sub');
+  if (state.introOutro) { state.intro = mapCues(fill(state.tplIntro), 'intro'); state.outro = mapCues(fill(state.tplOutro), 'outro'); }
+  else { state.intro = []; state.outro = []; }
+  deriveLevel();
+  $('#formView').hidden = true;
+  openStudio();
+});
 
 function openStudio() {
   if (!state.video) return;

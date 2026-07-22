@@ -91,6 +91,25 @@ body.studio-open .nav { background: #141414; border-bottom: 1px solid var(--line
 .selbar-chip.alt { background: transparent; color: var(--muted); font-weight: 500; }
 #continueBtn { padding: 13px 30px; font-size: 16px; }
 
+/* ---------- FORM VIEW ---------- */
+.formview { padding: 84px 4vw 80px; max-width: 720px; margin: 0 auto; }
+.form-intro { color: var(--muted); font-size: 15px; margin: 6px 0 22px; }
+.genform { display: flex; flex-direction: column; gap: 20px; }
+.fld { display: flex; flex-direction: column; gap: 8px; }
+.fld-label { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+.fld-label small { font-weight: 400; color: var(--muted); font-size: 13px; }
+.fld-label i { font-style: normal; width: 24px; height: 24px; border-radius: 50%; background: var(--red); color: #fff; font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.tin { background: #0f0f0f; color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 15px; font-family: inherit; width: 100%; }
+.tin:focus { outline: none; border-color: var(--red); }
+select.tin { cursor: pointer; }
+.loc-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.dyn-note { font-size: 12px; color: var(--muted); margin: 4px 0 -4px; }
+#dynFields { display: flex; flex-direction: column; gap: 20px; }
+#dynFields .fld-label i { background: #6ea8fe; color: #08131f; }
+.btn-generate { background: var(--red); color: #fff; padding: 16px; font-size: 17px; font-weight: 800; border-radius: 12px; margin-top: 6px; box-shadow: 0 8px 24px rgba(229,9,20,.35); }
+.btn-generate:hover { background: var(--red-hi); }
+.dyn-head { font-size: 13px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-top: 8px; }
+
 /* ---------- STUDIO ---------- */
 .studio { padding: 84px 4vw 60px; max-width: 1600px; margin: 0 auto; }
 .studio-bar { display: flex; align-items: center; gap: 20px; margin-bottom: 20px; }
