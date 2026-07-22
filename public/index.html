@@ -12,43 +12,30 @@
 <body>
 <nav class="nav">
   <div class="brand"><span class="brand-mark">▶</span> VIDEO STUDIO</div>
-  <div class="nav-links"><span>Home</span><span>My Renders</span></div>
+  <div class="nav-links">
+    <span>Home</span>
+    <span>My Renders</span>
+    <span id="navUpload" class="nav-upload">⬆ Upload xlsx</span>
+  </div>
 </nav>
 
 <!-- ===================== BROWSE VIEW ===================== -->
 <div id="browseView">
-  <section id="billboard" class="billboard">
-    <video id="bbVideo" class="bb-bg" muted loop playsinline></video>
-    <div class="bb-vignette"></div>
-    <div class="bb-content">
-      <div class="bb-kicker">▶ VIDEO STUDIO</div>
-      <h1 class="bb-title">Make your video, your way</h1>
-      <p class="bb-desc">Pick a base video, layer on intro/outro screens and subtitles, then burn &amp; export a finished MP4. Four levels — from simple titles to lip-sync (soon).</p>
-      <div class="bb-actions">
-        <button id="bbBrowse" class="btn-play">↓ Browse the library</button>
-      </div>
-    </div>
-  </section>
-
   <main id="rows">
     <div class="row">
-      <h2 class="row-title">Base Video <span class="req">pick one</span></h2>
-      <div class="rail" id="railVideos"><div class="loading">Loading videos…</div></div>
+      <h2 class="row-title"><span class="lv">Level 0</span> Intro &amp; Outro</h2>
+      <div class="rail" id="railLevel0"><div class="loading">Loading…</div></div>
     </div>
     <div class="row">
-      <h2 class="row-title">Intro &amp; Outro</h2>
-      <div class="rail" id="railLevel0"></div>
+      <h2 class="row-title"><span class="lv">Level 1</span> Subtitles</h2>
+      <div class="rail" id="railLevel1"></div>
     </div>
     <div class="row">
-      <h2 class="row-title">Subtitles</h2>
-      <div class="rail" id="railLevel1"><div class="loading">Loading templates…</div></div>
-    </div>
-    <div class="row">
-      <h2 class="row-title">Audio + Subtitles <span class="req">coming soon</span></h2>
+      <h2 class="row-title"><span class="lv">Level 2</span> Voiceover</h2>
       <div class="rail" id="railLevel2"></div>
     </div>
     <div class="row">
-      <h2 class="row-title">Lip-sync &amp; Face Swap <span class="req">coming soon</span></h2>
+      <h2 class="row-title"><span class="lv">Level 3</span> Manipulate heads</h2>
       <div class="rail" id="railLevel3"></div>
     </div>
   </main>
@@ -125,6 +112,10 @@
   <div class="studio-grid">
     <!-- LEFT: cinematic preview + export -->
     <div class="preview-pane">
+      <div id="noVideoNote" class="novideo" hidden>
+        <strong>No source video yet</strong>
+        <span>This template has no video attached — it'll come from the generator. You can still edit the script below.</span>
+      </div>
       <div class="stage">
         <video id="video" playsinline controls></video>
         <div id="subOverlay" class="sub-overlay"></div>

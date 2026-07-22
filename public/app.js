@@ -34,22 +34,17 @@ const fmt = (t) => { const m = Math.floor(t / 60), s = (t % 60); return `${m}:${
 const autoDur = (text) => Math.max(1.5, +(((text || '').trim().length) / 15).toFixed(2));
 function setMsg(sel, text, cls) { const el = $(sel); el.textContent = text; el.className = 'msg ' + (cls || ''); }
 
-// ===================== LOAD LIBRARY =====================
+// ===================== LOAD TEMPLATES INTO LEVEL ROWS =====================
+const LEVEL_ROWS = { '0': '#railLevel0', '1': '#railLevel1', '2': '#railLevel2', '3': '#railLevel3' };
+
 async function boot() {
-  renderLevel0Card();
-  renderLevel2and3();
-  try {
-    const videos = await (await fetch('/api/videos')).json();
-    renderVideoRail(videos);
-    if (videos[0]) { $('#bbVideo').src = videos[0].url; $('#bbVideo').play?.().catch(() => {}); }
-  } catch { $('#railVideos').innerHTML = '<div class="loading">Failed to load videos.</div>'; }
   try {
     const tpls = await (await fetch('/api/subtitle-templates')).json();
-    renderTemplateRail(tpls);
-  } catch { $('#railLevel1').innerHTML = '<div class="loading">Failed to load templates.</div>'; }
+    renderLevels(tpls);
+  } catch {
+    Object.values(LEVEL_ROWS).forEach((s) => ($(s).innerHTML = '<div class="loading">Failed to load templates.</div>'));
+  }
 }
-
-$('#bbBrowse').addEventListener('click', () => $('#railVideos').scrollIntoView({ behavior: 'smooth', block: 'center' }));
 
 function card({ cls = '', thumbHtml, cap, sub, onClick }) {
   const el = document.createElement('div');
@@ -60,95 +55,63 @@ function card({ cls = '', thumbHtml, cap, sub, onClick }) {
 }
 const placeholderThumb = (icon) => `<div class="thumb placeholder">${icon}</div>`;
 
-function renderVideoRail(videos) {
-  const rail = $('#railVideos');
-  rail.innerHTML = '';
-  if (!videos.length) { rail.innerHTML = '<div class="loading">No videos yet. Drop mp4s into the server /videos folder.</div>'; return; }
-  videos.forEach((v) => {
-    const thumb = `<video class="thumb" muted playsinline preload="metadata" src="${v.url}#t=0.5"></video>`;
-    const el = card({ cls: 'video-card', thumbHtml: thumb, cap: v.name, sub: 'base video', onClick: () => selectVideo(v, el) });
-    el.dataset.id = v.id;
-    rail.appendChild(el);
-  });
+function renderLevels(tpls) {
+  const byType = { '0': [], '1': [], '2': [], '3': [] };
+  tpls.forEach((t) => { if (byType[t.type]) byType[t.type].push(t); });
+  for (const [type, sel] of Object.entries(LEVEL_ROWS)) renderRail(sel, byType[type]);
+  if (!byType['1'].length) $('#railLevel1').innerHTML = '<div class="loading">No subtitle templates yet — use <b>⬆ Upload xlsx</b> in the top bar.</div>';
 }
 
-function renderLevel0Card() {
-  const rail = $('#railLevel0');
+function renderRail(sel, list) {
+  const rail = $(sel);
   rail.innerHTML = '';
-  const el = card({ cls: 'action level0', thumbHtml: placeholderThumb('✎'), cap: 'Intro & Outro', sub: 'black-screen text — combines with subtitles', onClick: () => toggleIntroOutro(el) });
-  rail.appendChild(el);
-}
-
-function renderTemplateRail(tpls) {
-  const rail = $('#railLevel1');
-  rail.innerHTML = '';
-  tpls.forEach((t) => {
-    const el = card({ thumbHtml: placeholderThumb('📝'), cap: t.name, sub: 'subtitle set', onClick: () => selectTemplate(t, el) });
+  if (!list || !list.length) { rail.innerHTML = '<div class="loading">Nothing here yet.</div>'; return; }
+  list.forEach((t) => {
+    const thumb = t.thumbUrl ? `<img class="thumb" src="${t.thumbUrl}" alt="" loading="lazy" />` : placeholderThumb('🎬');
+    const el = card({ thumbHtml: thumb, cap: t.name, sub: t.typeLabel + (t.videoId ? '' : ' · no video'), onClick: () => selectTemplate(t, el) });
     el.dataset.id = t.id;
     rail.appendChild(el);
   });
-  const up = card({ cls: 'action', thumbHtml: placeholderThumb('＋'), cap: 'Upload your own', sub: '.xlsx subtitle file', onClick: () => $('#xlsxInput').click() });
-  rail.appendChild(up);
 }
-
-function renderLevel2and3() {
-  $('#railLevel2').appendChild(card({ cls: 'soon action', thumbHtml: placeholderThumb('＋'), cap: 'Render new audio', sub: 'coming soon', onClick: () => comingSoon(2) }));
-  $('#railLevel3').appendChild(card({ cls: 'soon action', thumbHtml: placeholderThumb('＋'), cap: 'Lip-sync & Face Swap', sub: 'coming soon', onClick: () => comingSoon(3) }));
-}
-function comingSoon(lvl) { alert(`Level ${lvl} (${lvl === 2 ? 'audio rendering' : 'lip-sync & face swap'}) is coming soon.`); }
 
 // ===================== SELECTION (browse view — no navigation) =====================
-function selectVideo(v, el) {
-  state.video = v;
-  document.querySelectorAll('#railVideos .card').forEach((c) => c.classList.toggle('selected', c === el));
-  $('#selbar').hidden = false;
-  updateSelbar();
-}
-
 function deriveLevel() { state.level = state.subs.length ? 1 : 0; }
-
-// Intro & Outro is an independent layer — toggles on/off, stacks with subtitles.
-function toggleIntroOutro(el) {
-  state.introOutro = !state.introOutro;
-  el.classList.toggle('selected', state.introOutro);
-  if (state.introOutro) {
-    if (!state.intro.length) state.intro = mapCues(state.tplIntro, 'intro'); // seed from chosen template if any
-    if (!state.outro.length) state.outro = mapCues(state.tplOutro, 'outro');
-  } else {
-    state.intro = []; state.outro = [];
-  }
-  updateSelbar();
-}
 
 async function selectTemplate(t, el) {
   try {
     const cues = await (await fetch(`/api/subtitle-templates/${encodeURIComponent(t.id)}`)).json();
-    applyCues(cues, t.name, el);
+    applyCues(cues, cues.name || t.name, el);
   } catch { alert('Failed to load template.'); }
 }
 
-// Subtitle layer — independent of Intro & Outro. Click a selected one to clear it.
+// One template selected at a time (across all level rows). Click again to clear.
 function applyCues(cues, name, el) {
   const already = el && el.classList.contains('selected');
-  document.querySelectorAll('#railLevel1 .card').forEach((c) => c.classList.remove('selected'));
-  if (already) { // toggle off
-    state.subs = []; state.templateName = null; state.placeholders = []; state.rawSubs = [];
-    deriveLevel(); updateSelbar(); return;
+  document.querySelectorAll('#rows .card').forEach((c) => c.classList.remove('selected'));
+  if (already) {
+    state.subs = []; state.templateName = null; state.placeholders = []; state.rawSubs = []; state.video = null;
+    state.intro = []; state.outro = []; state.introOutro = false;
+    deriveLevel(); updateSelbar(); $('#selbar').hidden = true; return;
   }
   state.templateName = name;
   state.templateType = cues.type || '';
   state.placeholders = cues.placeholders || [];
   state.rawSubs = cues.subs || [];       // keep raw (with [placeholders]) for filling
   state.subs = mapCues(cues.subs, 'sub');
-  state.tplIntro = cues.intro || [];     // remembered so Intro & Outro can seed from it
+  state.tplIntro = cues.intro || [];
   state.tplOutro = cues.outro || [];
-  // include the template's intro/outro by default (part of the script)
+  // the template carries its own source video
+  state.video = cues.videoId ? { id: cues.videoId, url: cues.videoUrl, name } : null;
+  // the template's intro/outro are part of the script
   state.introOutro = (state.tplIntro.length || state.tplOutro.length) > 0;
-  document.querySelectorAll('#railLevel0 .card').forEach((c) => c.classList.toggle('selected', state.introOutro));
+  $('#selbar').hidden = false;
   deriveLevel();
   if (el) el.classList.add('selected');
   updateSelbar();
 }
+
+// Upload lives in the top bar (next to "My Renders")
+$('#navUpload').addEventListener('click', () => $('#xlsxInput').click());
 
 $('#xlsxInput').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -158,9 +121,15 @@ $('#xlsxInput').addEventListener('change', async (e) => {
     const r = await fetch('/api/subtitles', { method: 'POST', body: fd });
     const cues = await r.json();
     if (!r.ok) throw new Error(cues.error || 'parse failed');
-    document.querySelectorAll('#railLevel1 .card').forEach((c) => c.classList.remove('selected'));
-    applyCues(cues, file.name.replace(/\.xlsx$/i, ''), null);
-    if (state.video) $('#selbar').hidden = false;
+    const label = cues.name ? String(cues.name).replace(/\b\w/g, (c) => c.toUpperCase()) : file.name.replace(/\.xlsx$/i, '');
+    applyCues(cues, label, null);
+    // show the uploaded sheet as a selected card in its level row
+    const rail = $(LEVEL_ROWS[cues.type] || '#railLevel1');
+    const thumb = state.video ? `<img class="thumb" src="/thumbs/${encodeURIComponent(state.video.id.replace(/\.[^.]+$/, ''))}.jpg" alt="" />` : placeholderThumb('📄');
+    if (rail.querySelector('.loading')) rail.innerHTML = '';
+    const el = card({ cls: 'selected', thumbHtml: thumb, cap: label, sub: 'uploaded' + (state.video ? '' : ' · no video') });
+    rail.prepend(el);
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   } catch (err) { alert(err.message); }
   e.target.value = '';
 });
@@ -172,13 +141,14 @@ function activeLayers() {
   return parts;
 }
 function modeName() { const p = activeLayers(); return p.length ? p.join(' + ') : 'Video only'; }
+const LEVEL_NAME = { '0': 'Level 0 · Intro & Outro', '1': 'Level 1 · Subtitles', '2': 'Level 2 · Voiceover', '3': 'Level 3 · Manipulate heads' };
 function updateSelbar() {
-  $('#selVideo').textContent = state.video ? `🎬 ${state.video.name}` : 'No video';
-  $('#selLevel').textContent = modeName();
+  $('#selVideo').textContent = state.templateName ? `🎬 ${state.templateName}` : 'Nothing selected';
+  $('#selLevel').textContent = LEVEL_NAME[state.templateType] || modeName();
   const tpl = $('#selTemplate');
-  if (state.subs.length && state.templateName) { tpl.hidden = false; tpl.textContent = `${state.templateName} (${state.subs.length} lines)`; }
+  if (state.subs.length) { tpl.hidden = false; tpl.textContent = `${state.subs.length} lines${state.video ? '' : ' · no video'}`; }
   else tpl.hidden = true;
-  $('#continueBtn').disabled = !state.video;
+  $('#continueBtn').disabled = !state.templateName;
 }
 
 // ===================== CONTINUE → FORM → STUDIO =====================
@@ -269,18 +239,22 @@ $('#genForm').addEventListener('submit', (e) => {
 });
 
 function openStudio() {
-  if (!state.video) return;
   document.body.classList.add('studio-open');
+  // a template may have no source video yet (it'll come from the generator)
+  const hasVideo = !!state.video;
+  $('#noVideoNote').hidden = hasVideo;
+  document.querySelector('.stage').style.display = hasVideo ? '' : 'none';
+  document.querySelector('.preview-controls').style.display = hasVideo ? '' : 'none';
+  $('#exportBtn').disabled = !hasVideo;
+  $('#substyleBox').style.display = hasVideo && state.subs.length ? '' : 'none';
   $('#browseView').hidden = true;
   $('#selbar').hidden = true;
   $('#studio').hidden = false;
-  $('#bbVideo').pause?.();
-  video.src = state.video.url;
-  blackOverlay.hidden = true;
-  $('#chosenVideo').textContent = state.video.name;
+  if (hasVideo) { video.src = state.video.url; blackOverlay.hidden = true; }
+  else { video.removeAttribute('src'); }
+  $('#chosenVideo').textContent = state.templateName || (state.video && state.video.name) || '—';
   deriveLevel();
   applySubStyle();
-  $('#substyleBox').style.display = state.subs.length ? '' : 'none';
   renderPane('intro'); renderPane('subs'); renderPane('outro');
   updateTabCounts();
   switchTab(state.subs.length ? 'subs' : 'intro');
@@ -295,7 +269,6 @@ function closeStudio() {
   $('#studio').hidden = true;
   $('#browseView').hidden = false;
   $('#selbar').hidden = false;
-  $('#bbVideo').play?.().catch(() => {});
 }
 
 // ===================== SUBTITLE STYLE =====================
@@ -449,7 +422,7 @@ video.addEventListener('ended', () => { if (!previewing && state.outro.length) r
 function setProgress(pct, stage) { $('#progressBar').style.width = pct + '%'; $('#progressPct').textContent = pct + '%'; if (stage) $('#progressStage').textContent = stage; }
 $('#exportBtn').addEventListener('click', async () => {
   if (!state.video) { setMsg('#exportMsg', 'No base video selected.', 'err'); return; }
-  if (state.level >= 2) { comingSoon(state.level); return; }
+
   if (state.level === 1 && !state.subs.length) { setMsg('#exportMsg', 'Level 1 needs a subtitle set — pick one or switch to Level 0.', 'err'); return; }
   $('#exportBtn').disabled = true;
   setMsg('#exportMsg', '', '');

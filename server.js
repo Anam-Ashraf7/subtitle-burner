@@ -12,15 +12,17 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ffprobePath = ffprobeStatic.path;
 const WORK = path.join(__dirname, 'work');
-const VIDEOS_DIR = path.join(__dirname, 'videos');            // base video library
+const VIDEOS_DIR = path.join(__dirname, 'videos');            // source videos (per template)
 const TEMPLATES_DIR = path.join(__dirname, 'templates', 'subtitles'); // subtitle xlsx templates
-for (const d of [WORK, VIDEOS_DIR, TEMPLATES_DIR]) fs.mkdirSync(d, { recursive: true });
+const THUMBS_DIR = path.join(__dirname, 'thumbs');            // generated poster frames
+for (const d of [WORK, VIDEOS_DIR, TEMPLATES_DIR, THUMBS_DIR]) fs.mkdirSync(d, { recursive: true });
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/videos', express.static(VIDEOS_DIR, { acceptRanges: true })); // range-enabled preview streaming
 app.use('/fonts', express.static(path.join(__dirname, 'assets', 'fonts'))); // @font-face for WYSIWYG preview
+app.use('/thumbs', express.static(THUMBS_DIR)); // static poster frames for template cards
 
 const upload = multer({ dest: WORK, limits: { fileSize: 1024 * 1024 * 1024 } });
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.m4v']);
@@ -32,10 +34,51 @@ function listVideos() {
     .sort()
     .map((f) => ({ id: f, name: prettyName(f), url: `/videos/${encodeURIComponent(f)}` }));
 }
-const TYPE_LABEL = { '0': 'No text', '1': 'Subtitles', '2': 'Voiceover', '3': 'Head swap' };
+const TYPE_LABEL = { '0': 'Intro & Outro', '1': 'Subtitles', '2': 'Voiceover', '3': 'Manipulate heads' };
 function titleCase(s) { return String(s).replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()); }
+
+// --- match each template to its source video by name ---
+const nameTokens = (s) => String(s).toLowerCase().replace(/\.(mp4|webm|mov|m4v)$/, '')
+  .replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter((t) => t && !/^\d+x\d+$/.test(t));
+function matchTemplateVideos() {
+  const vids = listVideos(), tpls = [...templates().values()];
+  const pairs = [];
+  for (const t of tpls) for (const v of vids) {
+    const a = nameTokens(t.name), b = nameTokens(v.name);
+    const inter = a.filter((x) => b.includes(x)).length;
+    if (inter) pairs.push({ t: t.id, v: v.id, s: inter / new Set([...a, ...b]).size });
+  }
+  pairs.sort((x, y) => y.s - x.s); // greedy: best matches claim their video first
+  const out = new Map(); const used = new Set();
+  for (const p of pairs) { if (out.has(p.t) || used.has(p.v)) continue; out.set(p.t, p.v); used.add(p.v); }
+  return out;
+}
+const thumbName = (videoId) => path.basename(videoId, path.extname(videoId)) + '.jpg';
+
+function templateCard(t, match) {
+  const vid = match.get(t.id) || null;
+  return {
+    id: t.id, name: titleCase(t.name), type: t.type, typeLabel: TYPE_LABEL[t.type] || '',
+    subs: t.subs.length, placeholders: t.placeholders,
+    videoId: vid, videoUrl: vid ? `/videos/${encodeURIComponent(vid)}` : null,
+    thumbUrl: vid ? `/thumbs/${encodeURIComponent(thumbName(vid))}` : null,
+  };
+}
 function listTemplates() {
-  return [...templates().values()].map((t) => ({ id: t.id, name: titleCase(t.name), type: t.type, typeLabel: TYPE_LABEL[t.type] || '', subs: t.subs.length, placeholders: t.placeholders }));
+  const match = matchTemplateVideos();
+  return [...templates().values()].map((t) => templateCard(t, match));
+}
+
+// Generate a static poster frame per video (used as the card thumbnail).
+async function generateThumbs() {
+  for (const v of listVideos()) {
+    const out = path.join(THUMBS_DIR, thumbName(v.id));
+    if (fs.existsSync(out)) continue;
+    try {
+      // `thumbnail` picks the most representative frame from the first ~300 (avoids dark/blurry ones)
+      await run(ffmpegPath, ['-i', path.join(VIDEOS_DIR, v.id), '-vf', 'thumbnail=300,scale=-2:480', '-frames:v', '1', '-q:v', '3', '-y', out]);
+    } catch (e) { console.error('thumb failed', v.id, e.message); }
+  }
 }
 function prettyName(f) {
   return path.basename(f, path.extname(f)).replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -216,7 +259,8 @@ app.get('/api/subtitle-templates', (req, res) => res.json(listTemplates()));
 app.get('/api/subtitle-templates/:id', (req, res) => {
   const t = templates().get(req.params.id);
   if (!t) return res.status(404).json({ error: 'template not found' });
-  res.json({ intro: t.intro, subs: t.subs, outro: t.outro, placeholders: t.placeholders, type: t.type, name: titleCase(t.name) });
+  const card = templateCard(t, matchTemplateVideos());
+  res.json({ intro: t.intro, subs: t.subs, outro: t.outro, placeholders: t.placeholders, type: t.type, name: card.name, videoId: card.videoId, videoUrl: card.videoUrl, thumbUrl: card.thumbUrl });
 });
 
 // upload-your-own subtitle xlsx (no video) -> parsed cues
@@ -225,6 +269,17 @@ app.post('/api/subtitles', upload.single('xlsx'), (req, res) => {
   try {
     const parsed = parseWorkbook(fs.readFileSync(req.file.path));
     fs.unlinkSync(req.file.path);
+    // best-effort: attach a library video whose name matches the sheet's template_name
+    const vids = listVideos();
+    const a = nameTokens(parsed.name || '');
+    let best = null, bestScore = 0;
+    for (const v of vids) {
+      const b = nameTokens(v.name);
+      const inter = a.filter((x) => b.includes(x)).length;
+      const s = inter ? inter / new Set([...a, ...b]).size : 0;
+      if (s > bestScore) { bestScore = s; best = v; }
+    }
+    if (best) { parsed.videoId = best.id; parsed.videoUrl = best.url; }
     res.json(parsed);
   } catch (e) {
     try { fs.unlinkSync(req.file.path); } catch {}
@@ -507,5 +562,6 @@ const PORT = process.env.PORT || 5178;
 app.listen(PORT, async () => {
   console.log(`Subtitle burner running on port ${PORT}`);
   await seedSampleVideos();
-  console.log(`Library: ${listVideos().length} videos, ${listTemplates().length} subtitle templates`);
+  await generateThumbs();
+  console.log(`Library: ${listVideos().length} videos, ${listTemplates().length} templates`);
 });
