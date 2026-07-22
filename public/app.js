@@ -295,6 +295,15 @@ function updateLevelUI() {
 }
 
 // ===================== PREVIEW OVERLAY =====================
+// Match the preview frame to the video's real aspect ratio so the subtitle
+// size/position previews exactly like the burn (portrait 9:16 vs landscape 16:9).
+video.addEventListener('loadedmetadata', () => {
+  const ar = (video.videoWidth || 16) / (video.videoHeight || 9);
+  const stage = document.querySelector('.stage');
+  stage.style.aspectRatio = String(ar);
+  if (ar < 1) { stage.style.height = '72vh'; stage.style.width = 'auto'; }
+  else { stage.style.height = ''; stage.style.width = ''; }
+});
 video.addEventListener('timeupdate', updateSubOverlay);
 function updateSubOverlay() {
   if (state.level < 1) { subOverlay.innerHTML = ''; return; }
