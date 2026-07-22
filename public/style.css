@@ -98,6 +98,7 @@ body.studio-open .nav { background: #141414; border-bottom: 1px solid var(--line
 .fld { display: flex; flex-direction: column; gap: 8px; }
 .fld-label { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
 .fld-label small { font-weight: 400; color: var(--muted); font-size: 13px; }
+.maps { font-weight: 600; color: #6ea8fe; font-size: 12px; }
 .fld-label i { font-style: normal; width: 24px; height: 24px; border-radius: 50%; background: var(--red); color: #fff; font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 .tin { background: #0f0f0f; color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 15px; font-family: inherit; width: 100%; }
 .tin:focus { outline: none; border-color: var(--red); }

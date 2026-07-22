@@ -77,16 +77,16 @@
   <div class="form-wrap">
     <p class="form-intro">Fill in the details — we'll drop them into the script, then open the editor.</p>
     <form id="genForm" class="genform">
-      <div class="fld"><span class="fld-label"><i>1</i> Full name</span>
+      <div class="fld"><span class="fld-label"><i>1</i> Full name <span class="maps" id="map-fullname"></span></span>
         <input id="f-fullname" class="tin" type="text" placeholder="Enter full name" required />
       </div>
       <div class="fld"><span class="fld-label"><i>2</i> Email <small>where you'll receive the video</small></span>
         <input id="f-email" class="tin" type="email" placeholder="you@example.com" />
       </div>
-      <div class="fld"><span class="fld-label"><i>3</i> Position</span>
+      <div class="fld"><span class="fld-label"><i>3</i> Position <span class="maps" id="map-position"></span></span>
         <select id="f-position" class="tin"></select>
       </div>
-      <div class="fld"><span class="fld-label"><i>4</i> Location</span>
+      <div class="fld"><span class="fld-label"><i>4</i> Location <span class="maps" id="map-city"></span></span>
         <select id="f-state" class="tin" style="margin-bottom:8px"></select>
         <div class="loc-row">
           <input id="f-city" class="tin" type="text" placeholder="City" />

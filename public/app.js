@@ -209,6 +209,11 @@ function openForm() {
   $('#formTitle').textContent = state.templateName || state.video.name;
   const typeLabel = { '0': 'No text', '1': 'Subtitles', '2': 'Voiceover', '3': 'Head swap' }[state.templateType];
   $('#formType').textContent = typeLabel || ''; $('#formType').style.display = typeLabel ? '' : 'none';
+  // show which template placeholder each standard field fills
+  const setMap = (id, toks) => { const present = toks.filter((t) => state.placeholders.includes(t)); $('#' + id).textContent = present.length ? '· fills ' + present.map((t) => `[${t}]`).join(', ') : ''; };
+  setMap('map-fullname', ['FullNameX', 'LastNameX']);
+  setMap('map-position', ['OfficeX']);
+  setMap('map-city', ['CityX']);
   // dynamic fields for template-specific placeholders
   const dyn = $('#dynFields'); dyn.innerHTML = '';
   const toks = dynamicTokens();
