@@ -1,5 +1,5 @@
 const $ = (s) => document.querySelector(s);
-const state = { video: null, templateName: null, templateType: '', placeholders: [], rawSubs: [], intro: [], subs: [], outro: [], level: 0, introOutro: false, tplIntro: [], tplOutro: [],
+const state = { selected: {}, video: null, templateName: null, templateType: '', placeholders: [], rawSubs: [], intro: [], subs: [], outro: [], level: 0, introOutro: false, tplIntro: [], tplOutro: [],
   subStyle: { font: 'dejavu', size: 'medium', color: '#ffffff', bg: 'box', bgColor: '#000000' } };
 let cueSeq = 0;
 
@@ -80,33 +80,46 @@ function deriveLevel() { state.level = state.subs.length ? 1 : 0; }
 async function selectTemplate(t, el) {
   try {
     const cues = await (await fetch(`/api/subtitle-templates/${encodeURIComponent(t.id)}`)).json();
-    applyCues(cues, cues.name || t.name, el);
+    applyCues({ ...cues, id: t.id }, cues.name || t.name, el);
   } catch { alert('Failed to load template.'); }
 }
 
-// One template selected at a time (across all level rows). Click again to clear.
+// Levels are independent: one pick per level row, any number of levels at once.
 function applyCues(cues, name, el) {
+  const type = String(cues.type ?? '');
   const already = el && el.classList.contains('selected');
-  document.querySelectorAll('#rows .card').forEach((c) => c.classList.remove('selected'));
-  if (already) {
-    state.subs = []; state.templateName = null; state.placeholders = []; state.rawSubs = []; state.video = null;
-    state.intro = []; state.outro = []; state.introOutro = false;
+  if (el) el.closest('.rail')?.querySelectorAll('.card').forEach((c) => c.classList.remove('selected'));
+  if (already) delete state.selected[type];
+  else {
+    if (el) el.classList.add('selected');
+    state.selected[type] = { ...cues, type, name };
+  }
+  composeSelection();
+}
+
+// Compose the active script from whatever levels are selected:
+//   level 0 -> intro/outro · level 1 -> subtitles · highest level -> source video
+function composeSelection() {
+  const s = state.selected;
+  const order = ['3', '2', '1', '0'];
+  const primary = order.map((t) => s[t]).find(Boolean) || null;
+  if (!primary) {
+    Object.assign(state, { templateName: null, templateType: '', placeholders: [], rawSubs: [], subs: [], intro: [], outro: [], tplIntro: [], tplOutro: [], video: null, introOutro: false });
     deriveLevel(); updateSelbar(); $('#selbar').hidden = true; return;
   }
-  state.templateName = name;
-  state.templateType = cues.type || '';
-  state.placeholders = cues.placeholders || [];
-  state.rawSubs = cues.subs || [];       // keep raw (with [placeholders]) for filling
-  state.subs = mapCues(cues.subs, 'sub');
-  state.tplIntro = cues.intro || [];
-  state.tplOutro = cues.outro || [];
-  // the template carries its own source video
-  state.video = cues.videoId ? { id: cues.videoId, url: cues.videoUrl, name } : null;
-  // the template's intro/outro are part of the script
+  const scriptSrc = s['1'] || primary;          // subtitles come from the Subtitles pick when present
+  const screensSrc = s['0'] || primary;         // intro/outro come from the Intro & Outro pick when present
+  state.templateName = primary.name;
+  state.templateType = primary.type;
+  state.placeholders = [...new Set(Object.values(s).flatMap((x) => x.placeholders || []))];
+  state.rawSubs = scriptSrc.subs || [];
+  state.subs = mapCues(state.rawSubs, 'sub');
+  state.tplIntro = screensSrc.intro || [];
+  state.tplOutro = screensSrc.outro || [];
+  state.video = primary.videoId ? { id: primary.videoId, url: primary.videoUrl, name: primary.name } : null;
   state.introOutro = (state.tplIntro.length || state.tplOutro.length) > 0;
   $('#selbar').hidden = false;
   deriveLevel();
-  if (el) el.classList.add('selected');
   updateSelbar();
 }
 
@@ -141,14 +154,15 @@ function activeLayers() {
   return parts;
 }
 function modeName() { const p = activeLayers(); return p.length ? p.join(' + ') : 'Video only'; }
-const LEVEL_NAME = { '0': 'Level 0 · Intro & Outro', '1': 'Level 1 · Subtitles', '2': 'Level 2 · Voiceover', '3': 'Level 3 · Manipulate heads' };
+const LEVEL_NAME = { '0': 'Intro & Outro', '1': 'Subtitles', '2': 'Voiceover', '3': 'Manipulate heads' };
 function updateSelbar() {
-  $('#selVideo').textContent = state.templateName ? `🎬 ${state.templateName}` : 'Nothing selected';
-  $('#selLevel').textContent = LEVEL_NAME[state.templateType] || modeName();
-  const tpl = $('#selTemplate');
-  if (state.subs.length) { tpl.hidden = false; tpl.textContent = `${state.subs.length} lines${state.video ? '' : ' · no video'}`; }
-  else tpl.hidden = true;
-  $('#continueBtn').disabled = !state.templateName;
+  const info = document.querySelector('#selbar .selbar-info');
+  const picks = Object.keys(state.selected).sort();
+  info.innerHTML = picks.length
+    ? picks.map((t) => `<span class="selbar-chip"><b>L${t}</b> ${escapeHtml(state.selected[t].name)}</span>`).join('')
+      + `<span class="selbar-chip alt">${state.subs.length} lines${state.video ? '' : ' · no video'}</span>`
+    : '<span class="selbar-chip">Nothing selected</span>';
+  $('#continueBtn').disabled = !picks.length;
 }
 
 // ===================== CONTINUE → FORM → STUDIO =====================
