@@ -1,0 +1,30 @@
+{
+  "video_url": "s3://xavier-videos/generated/8f2c/lab-mask-convo.mp4",
+  "language": "en-US",
+
+  "characters": [
+    {
+      "id": "scientist-1",
+      "name": "Scientist 1",
+      "face": { "image_url": "s3://xavier-uploads/faces/9c4e77a1/scientist-1.jpg", "target_ref": "auto" }
+    },
+    {
+      "id": "scientist-2",
+      "name": "Scientist 2",
+      "face": { "image_url": "s3://xavier-uploads/faces/9c4e77a1/scientist-2.jpg", "target_ref": "auto" }
+    }
+  ],
+
+  "subtitles": [
+    { "id": "L1",  "character_id": "scientist-1",   "start_sec": 1.0,  "end_sec": 4.0,  "text": "Comrade, our Democratic Socialists finally have cracked it! Free sh*t for everyone!" },
+    { "id": "L2",  "character_id": "scientist-2",   "start_sec": 5.0,  "end_sec": 6.0,  "text": "Genius. How do we pay for it?" },
+    { "id": "L3",  "character_id": "scientist-1",   "start_sec": 7.0,  "end_sec": 9.0,  "text": "We tax the rich ... and then the upper middle class ... and then ... you!" },
+    { "id": "L4",  "character_id": "scientist-2",   "start_sec": 11.0, "end_sec": 12.0, "text": "What about inflation?" },
+    { "id": "L5",  "character_id": "scientist-1",   "start_sec": 13.0, "end_sec": 14.0, "text": "Freeze the prices!" },
+    { "id": "L6",  "character_id": "scientist-2",   "start_sec": 15.0, "end_sec": 16.0, "text": "A new solution! I love it!" },
+    { "id": "L7",  "character_id": "scientist-2",   "start_sec": 18.0, "end_sec": 19.0, "text": "Uh, what if it all explodes?" },
+    { "id": "L8",  "character_id": "scientist-1",   "start_sec": 20.0, "end_sec": 22.0, "text": "Then we blame capitalism and pass another trillion-dollar bill!" },
+    { "id": "L9",  "character_id": "scientist-2",   "start_sec": 23.0, "end_sec": 24.0, "text": "Brilliant. The science is settled." },
+    { "id": "L10", "character_id": "both-in-unison","start_sec": 25.0, "end_sec": 26.0, "text": "Trust science!" }
+  ]
+}

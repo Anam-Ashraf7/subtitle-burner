@@ -41,39 +41,29 @@ directions (they're never spoken, so they're stripped before sending).
 
 ```json
 {
-  "job_id": "b3f1c2a4-7d1e-4a90-9d33-2f5c1a0e77bd",
-  "callback_url": "https://api.xavier.ai/webhooks/voiceover",
   "video_url": "s3://xavier-videos/generated/8f2c/lab-mask-convo.mp4",
   "language": "en-US",
-  "timing": { "mode": "fit", "max_stretch": 1.25 },
-  "mix": { "keep_original_audio": false, "original_gain_db": -30, "normalize_lufs": -14 },
 
   "characters": [
     {
       "id": "scientist-1",
       "name": "Scientist 1",
       "voice_prompt": "Older male, thick Russian accent, manic and gleeful — mad-scientist energy",
-      "voice_id": null,
-      "settings": { "speed": 1.0, "stability": 0.5, "style": 0.4 }
     },
     {
       "id": "scientist-2",
       "name": "Scientist 2",
       "voice_prompt": "Younger male, nasal and eager, always impressed — the yes-man of the pair",
-      "voice_id": null,
-      "settings": { "speed": 1.05, "stability": 0.45, "style": 0.55 }
     },
     {
       "id": "both-in-unison",
       "name": "Both, in unison",
       "voice_prompt": "Both voices shouted together in unison, triumphant",
-      "voice_id": null,
       "members": ["scientist-1", "scientist-2"],
-      "settings": { "speed": 1.0 }
     }
   ],
 
-  "lines": [
+  "subtitles": [
     { "id": "L1",  "character_id": "scientist-1",   "start_sec": 1.0,  "end_sec": 4.0,  "text": "Comrade, our Democratic Socialists finally have cracked it! Free sh*t for everyone!" },
     { "id": "L2",  "character_id": "scientist-2",   "start_sec": 5.0,  "end_sec": 6.0,  "text": "Genius. How do we pay for it?" },
     { "id": "L3",  "character_id": "scientist-1",   "start_sec": 7.0,  "end_sec": 9.0,  "text": "We tax the rich ... and then the upper middle class ... and then ... you!" },
@@ -84,9 +74,7 @@ directions (they're never spoken, so they're stripped before sending).
     { "id": "L8",  "character_id": "scientist-1",   "start_sec": 20.0, "end_sec": 22.0, "text": "Then we blame capitalism and pass another trillion-dollar bill!" },
     { "id": "L9",  "character_id": "scientist-2",   "start_sec": 23.0, "end_sec": 24.0, "text": "Brilliant. The science is settled." },
     { "id": "L10", "character_id": "both-in-unison","start_sec": 25.0, "end_sec": 26.0, "text": "Trust science!" }
-  ],
-
-  "output": { "bucket": "xavier-videos", "key_prefix": "voiceover/b3f1c2a4/", "deliver": ["video", "stems"] }
+  ]
 }
 ```
 

@@ -67,32 +67,25 @@
       <div class="fld"><span class="fld-label"><i>1</i> Full name <span class="maps" id="map-fullname"></span></span>
         <input id="f-fullname" class="tin" type="text" placeholder="Enter full name" required />
       </div>
-      <div class="fld"><span class="fld-label"><i>2</i> Email <small>where you'll receive the video</small></span>
-        <input id="f-email" class="tin" type="email" placeholder="you@example.com" />
-      </div>
-      <div class="fld"><span class="fld-label"><i>3</i> Position <span class="maps" id="map-position"></span></span>
+      <div class="fld"><span class="fld-label"><i>2</i> Position <span class="maps" id="map-position"></span></span>
         <select id="f-position" class="tin"></select>
       </div>
-      <div class="fld"><span class="fld-label"><i>4</i> Location <span class="maps" id="map-city"></span></span>
+      <div class="fld"><span class="fld-label"><i>3</i> Location <span class="maps" id="map-city"></span></span>
         <select id="f-state" class="tin" style="margin-bottom:8px"></select>
         <div class="loc-row">
           <input id="f-city" class="tin" type="text" placeholder="City" />
           <input id="f-county" class="tin" type="text" placeholder="County (optional)" />
         </div>
       </div>
-      <div class="fld"><span class="fld-label"><i>5</i> Party affiliation</span>
+      <div class="fld"><span class="fld-label"><i>4</i> Party affiliation</span>
         <select id="f-party" class="tin"></select>
       </div>
-      <div class="fld"><span class="fld-label"><i>6</i> Style</span>
-        <select id="f-style" class="tin">
-          <option value="">Choose style…</option>
-          <option value="cartoon">Cartoon</option>
-          <option value="realistic">Realistic</option>
-          <option value="meme">Meme</option>
-          <option value="high-end-video">High-end (face swap &amp; lip sync)</option>
-        </select>
-      </div>
       <div id="dynFields"></div>
+      <div id="formFaceWrap" hidden>
+        <div class="dyn-head">Character faces</div>
+        <div class="dyn-note">Level 3 swaps these faces onto the characters and lip-syncs them. Upload one clear, front-facing photo per character.</div>
+        <div id="formFaces" class="charlist"></div>
+      </div>
       <button type="submit" class="btn-generate">Generate video →</button>
     </form>
   </div>
@@ -120,6 +113,7 @@
         <video id="video" playsinline controls></video>
         <div id="subOverlay" class="sub-overlay"></div>
         <div id="blackOverlay" class="black-overlay" hidden><div id="blackText"></div></div>
+        <audio id="voiceAudio" hidden preload="auto"></audio>
       </div>
       <div class="preview-controls">
         <button id="playFull" class="ghost">▶ Preview intro → video → outro</button>
@@ -139,12 +133,8 @@
               <option value="pacifico">Pacifico</option>
             </select>
           </label>
-          <label class="sel">Size
-            <select id="sizeSel">
-              <option value="small">Small</option>
-              <option value="medium" selected>Medium</option>
-              <option value="large">Large</option>
-            </select>
+          <label class="sel">Size <span id="sizeVal" class="range-val">5.5%</span>
+            <input type="range" id="sizeSel" class="range" min="3" max="9" step="0.1" value="5.5" />
           </label>
         </div>
         <div class="render-row">
@@ -162,6 +152,16 @@
             <input type="color" id="colorSel" value="#ffffff" />
           </label>
         </div>
+      </div>
+
+      <div id="voiceBox" class="render-box" hidden>
+        <div class="render-head">Voiceover <span class="hint">— Level 2 · describe the voice for each character</span></div>
+        <div id="voiceChars" class="charlist"></div>
+      </div>
+
+      <div id="faceBox" class="render-box" hidden>
+        <div class="render-head">Face swap &amp; lip sync <span class="hint">— Level 3 · upload a face for each character</span></div>
+        <div id="faceChars" class="charlist"></div>
       </div>
 
       <div class="render-box">
@@ -196,6 +196,14 @@
     <!-- RIGHT: timeline editor -->
     <div class="editor-pane">
       <div class="editor-head">
+        <div class="applybar">
+          <span class="apply-dot" aria-hidden="true"></span>
+          <span class="apply-text">
+            <b id="applyState">All changes applied</b>
+            <small id="applyHint">Your edits are ready to export</small>
+          </span>
+          <button id="applyBtn" class="btn-apply" disabled><span class="ba-ico">✓</span> Apply &amp; save</button>
+        </div>
         <div class="tabs">
           <button class="tab active" data-tab="intro">Intro</button>
           <button class="tab" data-tab="subs">Subtitles</button>

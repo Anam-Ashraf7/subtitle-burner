@@ -1,0 +1,26 @@
+{
+  "videoId": "lab_mask_convo_9x16.mp4",
+  "level": 0,
+  "voiceover": true,
+  "faceswap": false,
+  "language": "en-US",
+  "preset": "ultrafast",
+  "crf": 28,
+  "maxHeight": 720,
+  "intro": [],
+  "outro": [],
+  "subStyle": { "font": "dejavu", "size": "medium", "color": "#ffffff", "bg": "box", "bgColor": "#000000" },
+  "voices": {
+    "scientist-1": "Older male, thick Russian accent, manic and gleeful — mad-scientist energy",
+    "scientist-2": "Younger male, nasal and eager, always impressed — the yes-man of the pair",
+    "both-in-unison": "Both voices shouted together in unison, triumphant"
+  },
+  "subs": [
+    { "id": "sub-0", "person": "Scientist 1", "start": 0.5, "end": 4.0, "text": "Comrade, our Democratic Socialists finally cracked it! Free stuff for everyone!" },
+    { "id": "sub-1", "person": "Scientist 2", "start": 5.0, "end": 6.0, "text": "Genius. How do we pay for it?" },
+    { "id": "sub-2", "person": "Scientist 1", "start": 7.0, "end": 9.0, "text": "We tax the rich, then the middle class, then you!" },
+    { "id": "sub-3", "person": "Scientist 2", "start": 11.0, "end": 12.0, "text": "What about inflation?" },
+    { "id": "sub-4", "person": "Scientist 1", "start": 13.0, "end": 14.0, "text": "Freeze the prices!" },
+    { "id": "sub-5", "person": "Both, in unison", "start": 25.0, "end": 26.0, "text": "Trust science!" }
+  ]
+}
