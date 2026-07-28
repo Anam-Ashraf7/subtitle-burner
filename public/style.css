@@ -189,6 +189,9 @@ select.tin { cursor: pointer; }
 .empty { color: var(--muted); font-size: 13px; padding: 20px; border: 1px dashed var(--line); border-radius: 12px; text-align: center; margin-bottom: 12px; }
 
 .timeline { display: flex; flex-direction: column; position: relative; }
+/* Scroll the cue list inside its own box so the sticky video preview on the left
+   never gets pushed out of view as the active cue auto-scrolls near the end. */
+.editor-pane .tabpane { max-height: calc(100vh - 200px); overflow-y: auto; overflow-x: hidden; padding-right: 4px; }
 /* the vertical connector line behind the avatars */
 .timeline .cue::before { content: ""; position: absolute; left: 21px; top: -9px; width: 2px; height: 22px; background: var(--line); z-index: 0; }
 .timeline .cue.first::before { display: none; }

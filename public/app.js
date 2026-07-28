@@ -437,10 +437,19 @@ function updateSubOverlay() {
   for (const c of state.subs) { if (t >= c.start && t <= c.end) { active = c; break; } }
   subOverlay.innerHTML = active && active.text ? `<span>${escapeHtml(active.text)}</span>` : '';
   document.querySelectorAll('#pane-subs .cue').forEach((el) => el.classList.toggle('active', active && el.dataset.id === active.id));
-  // auto-scroll the active cue into view (unless the user is typing)
+  // keep the active cue visible by scrolling ONLY its list box — never the page,
+  // so the video preview on the left stays put (unless the user is typing)
   if (active && !$('#pane-subs').hidden && document.activeElement?.tagName !== 'TEXTAREA') {
-    document.querySelector(`#pane-subs .cue[data-id="${active.id}"]`)?.scrollIntoView({ block: 'nearest' });
+    scrollCueIntoView($('#pane-subs'), document.querySelector(`#pane-subs .cue[data-id="${active.id}"]`));
   }
+}
+// Adjust only the container's scrollTop to reveal el; leaves window scroll untouched.
+function scrollCueIntoView(pane, el) {
+  if (!pane || !el) return;
+  const pr = pane.getBoundingClientRect();
+  const er = el.getBoundingClientRect();
+  if (er.top < pr.top + 8) pane.scrollTop += er.top - pr.top - 8;
+  else if (er.bottom > pr.bottom - 8) pane.scrollTop += er.bottom - pr.bottom + 8;
 }
 
 // ===================== EDITOR TABS =====================
@@ -613,11 +622,29 @@ $('#applyBtn').addEventListener('click', async () => {
 // ===================== LEVEL 2 VOICE PREVIEW =====================
 // Only re-generate when something that affects the audio actually changed.
 function voiceSignature() {
+  // `end` is excluded on purpose: the API decides each line's real end from the
+  // generated speech and we write it back, so it must not feed regeneration.
   return JSON.stringify({
     v: state.video && state.video.id, lang: 'en-US',
-    subs: state.subs.map((c) => ({ p: c.person, s: c.start, e: c.end, t: c.text })),
+    subs: state.subs.map((c) => ({ p: c.person, s: c.start, t: c.text })),
     voices: Object.fromEntries(Object.entries(state.voices).map(([k, v]) => [k, v.prompt || ''])),
   });
+}
+
+// Snap subtitle timings to the spoken audio the API returned (keyed by line id) so
+// the captions match the voice. Derived, not a user edit — does not mark dirty.
+function applyVoiceTimeline(timeline) {
+  if (!Array.isArray(timeline)) return;
+  const byId = new Map(timeline.map((e) => [e.id, e]));
+  let changed = false;
+  state.subs.forEach((c) => {
+    const e = byId.get(c.id);
+    if (!e) return;
+    if (Number.isFinite(+e.start_sec)) c.start = +e.start_sec;
+    if (Number.isFinite(+e.end_sec)) c.end = +e.end_sec;
+    changed = true;
+  });
+  if (changed) { resortSubs(); renderPane('subs'); updateTabCounts(); updateSubOverlay(); }
 }
 function clearVoiceAudio() { state.voiceUrl = null; state.voiceSig = null; voiceAudio.pause(); voiceAudio.removeAttribute('src'); video.muted = false; }
 const voicePromptMap = () => Object.fromEntries(Object.entries(state.voices).map(([k, v]) => [k, v.prompt || '']));
@@ -638,6 +665,7 @@ async function maybeGenerateVoice() {
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || 'voiceover failed');
     state.voiceUrl = j.presigned_url; state.voiceSig = sig;
+    applyVoiceTimeline(j.timeline); // align captions to the spoken audio
     voiceAudio.src = j.presigned_url; voiceAudio.load(); video.muted = true;
     if (!video.paused && !previewing) { voiceAudio.currentTime = video.currentTime; voiceAudio.play().catch(() => {}); }
     $('#applyHint').textContent = `🔊 Voiceover ready · press ▶ to preview (${(+j.duration_seconds || 0).toFixed(1)}s)`;

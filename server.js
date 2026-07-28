@@ -456,6 +456,18 @@ app.post('/api/voiceover', async (req, res) => {
   } catch (e) { res.status(502).json({ error: String(e.message || e) }); }
 });
 
+// Snap subtitle cues to the spoken audio the API returned (matched by line id).
+function applyTimeline(subs, timeline) {
+  if (!Array.isArray(timeline)) return;
+  const byId = new Map(timeline.map((e) => [e.id, e]));
+  for (const c of subs) {
+    const e = byId.get(c.id);
+    if (!e) continue;
+    if (Number.isFinite(+e.start_sec)) c.start = +e.start_sec;
+    if (Number.isFinite(+e.end_sec)) c.end = +e.end_sec;
+  }
+}
+
 const jobs = new Map(); // jobId -> { percent, stage, done, error, file, dir }
 
 // Kick off an export job; returns immediately with a jobId. Progress via SSE.
@@ -539,10 +551,16 @@ async function runExportJob(jobId, s, { level = 1, intro = [], subs = [], outro 
   // Level 2: generate the replacement voiceover before touching the video.
   let voiceMp3 = null;
   if (voiceover) {
-    // Reuse the mp3 already generated for the preview when the client passes it back;
-    // otherwise generate fresh. Either way the same track ends up on the export.
+    // Reuse the mp3 already generated for the preview when the client passes it back
+    // (the client already snapped the subs to the timeline); otherwise generate fresh
+    // and align the burned subs to the returned timeline here.
     job.stage = voiceUrl ? 'Fetching voiceover…' : 'Generating voiceover…';
-    const url = voiceUrl || (await requestVoiceover({ s3Uri: s.src.s3Uri, language, subs, voices })).presigned_url;
+    let url = voiceUrl;
+    if (!url) {
+      const vo = await requestVoiceover({ s3Uri: s.src.s3Uri, language, subs, voices });
+      url = vo.presigned_url;
+      applyTimeline(burnSubs, vo.timeline); // captions follow the spoken audio
+    }
     voiceMp3 = path.join(dir, 'voice.mp3');
     fs.writeFileSync(voiceMp3, Buffer.from(await (await fetch(url)).arrayBuffer()));
   }
