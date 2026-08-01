@@ -75,6 +75,15 @@ function card({ cls = '', thumbHtml, cap, sub, onClick }) {
   return el;
 }
 const placeholderThumb = (icon) => `<div class="thumb placeholder">${icon}</div>`;
+// A thumbnail that fails to load (still generating, or generation failed) falls back to
+// the placeholder icon instead of a broken-image glyph. img error doesn't bubble → capture.
+document.addEventListener('error', (e) => {
+  const t = e.target;
+  if (t && t.tagName === 'IMG' && t.classList.contains('thumb')) {
+    const ph = document.createElement('div'); ph.className = 'thumb placeholder'; ph.textContent = '🎬';
+    t.replaceWith(ph);
+  }
+}, true);
 
 function renderLevels(tpls) {
   const byType = { '0': [], '1': [], '2': [], '3': [] };

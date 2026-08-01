@@ -209,14 +209,25 @@ async function transcribeVideo(key) {
 // Generate a static poster frame per video (used as the card thumbnail).
 // Reads directly from the S3 public URL; -ss before -i seeks via range requests
 // so ffmpeg only downloads a small slice rather than the whole file.
-async function generateThumbs() {
-  for (const v of listVideos()) {
-    const out = path.join(THUMBS_DIR, thumbName(v.id));
-    if (fs.existsSync(out)) continue;
-    try {
-      await run(ffmpegPath, ['-ss', '1', '-i', v.url, '-frames:v', '1', '-vf', 'scale=-2:480', '-q:v', '3', '-y', out]);
-    } catch (e) { console.error('thumb failed', v.id, e.message); }
+const thumbInFlight = new Map();
+// Generate one poster frame: cached on disk, deduped per file, and time-bounded so a
+// slow/awkward source on a small host can't hang the request or block other thumbs.
+function ensureThumb(v) {
+  const file = path.join(THUMBS_DIR, thumbName(v.id));
+  if (fs.existsSync(file)) return Promise.resolve(file);
+  if (!thumbInFlight.has(file)) {
+    const pr = run(ffmpegPath, ['-ss', '1', '-i', v.url, '-frames:v', '1', '-vf', 'scale=-2:480', '-q:v', '3', '-y', file], null, 25000)
+      .then(() => file)
+      .catch((e) => { console.error('thumb failed', v.id, e.message); try { if (fs.existsSync(file)) fs.unlinkSync(file); } catch { /* ignore */ } throw e; })
+      .finally(() => thumbInFlight.delete(file));
+    thumbInFlight.set(file, pr);
   }
+  return thumbInFlight.get(file);
+}
+// Warm all thumbs in parallel at boot; failures are non-fatal — the /thumbs route
+// regenerates any that are missing on demand.
+function generateThumbs() {
+  return Promise.allSettled(listVideos().map((v) => ensureThumb(v)));
 }
 function prettyName(f) {
   return path.basename(f, path.extname(f)).replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -378,6 +389,18 @@ function resolveTemplate(id) {
   return fs.existsSync(p) && path.extname(p).toLowerCase() === '.xlsx' ? p : null;
 }
 
+// Poster frames: the static middleware serves existing files; anything missing (boot
+// warm-up not finished or failed) is generated on demand here so cards still get a thumb.
+app.get('/thumbs/:name', async (req, res) => {
+  const name = path.basename(req.params.name);
+  const file = path.join(THUMBS_DIR, name);
+  if (fs.existsSync(file)) return res.sendFile(file);
+  const v = listVideos().find((x) => thumbName(x.id) === name);
+  if (!v) return res.status(404).end();
+  try { await ensureThumb(v); res.sendFile(file); }
+  catch { res.status(404).end(); }
+});
+
 app.get('/api/videos', (req, res) => res.json(listVideos()));
 app.get('/api/subtitle-templates', (req, res) => res.json(listTemplates()));
 
@@ -538,10 +561,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 }
 
 // run ffmpeg; onProgress(seconds) fires as it encodes (parsed from -progress output)
-function run(bin, args, onProgress) {
+function run(bin, args, onProgress, timeoutMs) {
   return new Promise((resolve, reject) => {
     const p = spawn(bin, args);
-    let err = '';
+    let err = '', settled = false;
+    const done = (fn, arg) => { if (settled) return; settled = true; if (timer) clearTimeout(timer); fn(arg); };
+    const timer = timeoutMs ? setTimeout(() => { try { p.kill('SIGKILL'); } catch { /* ignore */ } done(reject, new Error(`timed out after ${timeoutMs}ms`)); }, timeoutMs) : null;
     p.stderr.on('data', (d) => (err += d));
     if (onProgress) {
       let buf = '';
@@ -555,8 +580,8 @@ function run(bin, args, onProgress) {
         }
       });
     }
-    p.on('close', (code) => (code === 0 ? resolve() : reject(new Error(err.slice(-2000)))));
-    p.on('error', reject);
+    p.on('close', (code) => (code === 0 ? done(resolve) : done(reject, new Error(err.slice(-2000)))));
+    p.on('error', (e) => done(reject, e));
   });
 }
 const PROG = ['-progress', 'pipe:1', '-nostats']; // machine-readable progress on stdout
@@ -1033,7 +1058,7 @@ app.get('/result/:jobId', (req, res) => {
 const PORT = process.env.PORT || 5178;
 app.listen(PORT, async () => {
   console.log(`Subtitle burner running on port ${PORT}`);
-  await generateThumbs();
+  generateThumbs(); // warm poster frames in the background; /thumbs regenerates misses on demand
   if (s3Enabled) { try { const n = await syncTemplatesFromS3(); if (n) console.log(`Synced ${n} saved template(s) from cloud`); } catch (e) { console.warn('template cloud sync failed:', e.message); } }
   console.log(`Library: ${listVideos().length} videos, ${listTemplates().length} templates`);
   // Warm transcription + preview caches in the background so the first selection is instant.
