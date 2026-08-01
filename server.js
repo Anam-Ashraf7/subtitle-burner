@@ -10,6 +10,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { S3Client, PutObjectCommand, GetObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -38,6 +40,21 @@ const TRANSCRIPTS_DIR = path.join(__dirname, 'transcripts');  // cached speech-t
 const PREVIEWS_DIR = path.join(__dirname, 'previews');        // audio-stripped copies for browsers that reject bad audio
 const FACES_DIR = path.join(__dirname, 'faces');              // uploaded character faces, served publicly for the L3 API
 for (const d of [WORK, TEMPLATES_DIR, THUMBS_DIR, TRANSCRIPTS_DIR, PREVIEWS_DIR, FACES_DIR]) fs.mkdirSync(d, { recursive: true });
+
+// The static ffmpeg/ffprobe build SEGFAULTS reading https:// in some container
+// environments (e.g. Render) — its bundled TLS stack crashes. Node's fetch works fine,
+// so we download any remote input to a temp file and run ffmpeg/ffprobe on the LOCAL
+// copy. Returns { path, cleanup }; a local path is returned untouched.
+async function localInput(url) {
+  if (!/^https?:\/\//i.test(String(url || ''))) return { path: url, cleanup: () => {} };
+  let ext = '.mp4';
+  try { ext = path.extname(new URL(url).pathname) || '.mp4'; } catch { /* keep default */ }
+  const tmp = path.join(WORK, `in-${randomUUID().slice(0, 8)}${ext}`);
+  const res = await fetch(url);
+  if (!res.ok || !res.body) throw new Error(`download failed (${res.status})`);
+  await pipeline(Readable.fromWeb(res.body), fs.createWriteStream(tmp));
+  return { path: tmp, cleanup: () => { try { fs.unlinkSync(tmp); } catch { /* ignore */ } } };
+}
 
 const app = express();
 app.use(express.json({ limit: '30mb' })); // face images arrive as base64 data URLs
@@ -147,20 +164,23 @@ async function ensurePreview(key) {
   if (fs.existsSync(out)) return out;
   const src = resolveVideo(key);
   if (!src) throw new Error('video not found in library');
-  const vdur = await videoStreamDuration(src.url);
-  const trim = vdur ? ['-t', String(vdur + 0.1)] : [];
-  const base = ['-y', '-err_detect', 'ignore_err', '-max_error_rate', '1.0', '-i', src.url, '-map', '0:v:0', '-map', '0:a:0?'];
-  const finish = ['-movflags', '+faststart', out];
+  const { path: local, cleanup } = await localInput(src.url);
   try {
-    await run(ffmpegPath, [...base, '-c', 'copy', ...trim, ...finish]); // fast: stream copy
-  } catch (e1) {
-    try { fs.rmSync(out, { force: true }); } catch { /* ignore */ }
+    const vdur = await videoStreamDuration(local);
+    const trim = vdur ? ['-t', String(vdur + 0.1)] : [];
+    const base = ['-y', '-err_detect', 'ignore_err', '-max_error_rate', '1.0', '-i', local, '-map', '0:v:0', '-map', '0:a:0?'];
+    const finish = ['-movflags', '+faststart', out];
     try {
-      await run(ffmpegPath, [...base, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', ...trim, ...finish]); // fallback: re-encode audio
-    } catch (e2) {
-      if (!(fs.existsSync(out) && fs.statSync(out).size > 100000)) throw e2;
+      await run(ffmpegPath, [...base, '-c', 'copy', ...trim, ...finish]); // fast: stream copy
+    } catch (e1) {
+      try { fs.rmSync(out, { force: true }); } catch { /* ignore */ }
+      try {
+        await run(ffmpegPath, [...base, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', ...trim, ...finish]); // fallback: re-encode audio
+      } catch (e2) {
+        if (!(fs.existsSync(out) && fs.statSync(out).size > 100000)) throw e2;
+      }
     }
-  }
+  } finally { cleanup(); }
   return out;
 }
 // Non-blocking warm: kick off preview generation without awaiting (dedup in-flight).
@@ -216,8 +236,11 @@ function ensureThumb(v) {
   const file = path.join(THUMBS_DIR, thumbName(v.id));
   if (fs.existsSync(file)) return Promise.resolve(file);
   if (!thumbInFlight.has(file)) {
-    const pr = run(ffmpegPath, ['-ss', '1', '-i', v.url, '-frames:v', '1', '-vf', 'scale=-2:480', '-q:v', '3', '-y', file], null, 25000)
-      .then(() => file)
+    const pr = (async () => {
+      const { path: local, cleanup } = await localInput(v.url);
+      try { await run(ffmpegPath, ['-ss', '1', '-i', local, '-frames:v', '1', '-vf', 'scale=-2:480', '-q:v', '3', '-y', file], null, 25000); return file; }
+      finally { cleanup(); }
+    })()
       .catch((e) => { console.error('thumb failed', v.id, e.message); try { if (fs.existsSync(file)) fs.unlinkSync(file); } catch { /* ignore */ } throw e; })
       .finally(() => thumbInFlight.delete(file));
     thumbInFlight.set(file, pr);
@@ -349,15 +372,17 @@ function loadTemplates() {
 const templates = () => TEMPLATE_CACHE || loadTemplates();
 
 async function probe(videoPath) {
+  const { path: local, cleanup } = await localInput(videoPath);
   return new Promise((resolve, reject) => {
     const p = spawn(ffprobePath, [
       '-v', 'error', '-select_streams', 'v:0',
       '-show_entries', 'stream=width,height,r_frame_rate:format=duration',
-      '-of', 'json', videoPath,
+      '-of', 'json', local,
     ]);
     let out = '';
     p.stdout.on('data', (d) => (out += d));
     p.on('close', () => {
+      cleanup();
       try {
         const j = JSON.parse(out);
         const st = j.streams[0];
@@ -370,7 +395,7 @@ async function probe(videoPath) {
         });
       } catch (e) { reject(e); }
     });
-    p.on('error', reject);
+    p.on('error', (e) => { cleanup(); reject(e); });
   });
 }
 
@@ -399,34 +424,6 @@ app.get('/thumbs/:name', async (req, res) => {
   if (!v) return res.status(404).end();
   try { await ensureThumb(v); res.sendFile(file); }
   catch { res.status(404).end(); }
-});
-
-// TEMP diagnostic: isolate why ffmpeg can/can't produce thumbnails in prod.
-function spawnDiag(bin, args, timeoutMs) {
-  return new Promise((resolve) => {
-    const p = spawn(bin, args);
-    let err = '';
-    const t = setTimeout(() => { try { p.kill('SIGKILL'); } catch { /* ignore */ } }, timeoutMs);
-    p.stderr.on('data', (d) => (err += d));
-    p.on('close', (code, signal) => { clearTimeout(t); resolve({ code, signal, errTail: err.slice(-350) }); });
-    p.on('error', (e) => { clearTimeout(t); resolve({ spawnError: e.message }); });
-  });
-}
-app.get('/api/_diag', async (req, res) => {
-  const out = { ffmpegPath };
-  // A: ffmpeg encoding a local test pattern — no network at all.
-  const lf = path.join(WORK, 'testsrc.jpg');
-  out.localEncode = await spawnDiag(ffmpegPath, ['-f', 'lavfi', '-i', 'testsrc=size=64x64:rate=1:duration=1', '-frames:v', '1', '-y', lf], 15000);
-  out.localFileBytes = fs.existsSync(lf) ? fs.statSync(lf).size : 0;
-  // B: can NODE reach the S3 object?
-  const url = (listVideos()[0] || {}).url; out.url = url;
-  try { const r = await fetch(url, { headers: { Range: 'bytes=0-2000' } }); const b = await r.arrayBuffer(); out.nodeFetch = { status: r.status, bytes: b.byteLength }; }
-  catch (e) { out.nodeFetchErr = String(e.message); }
-  // C: ffmpeg reading the S3 URL — capture exit code + signal.
-  const sf = path.join(WORK, 'diag_s3.jpg');
-  out.s3Thumb = await spawnDiag(ffmpegPath, ['-ss', '1', '-i', url, '-frames:v', '1', '-vf', 'scale=-2:120', '-q:v', '5', '-y', sf], 25000);
-  out.s3ThumbBytes = fs.existsSync(sf) ? fs.statSync(sf).size : 0;
-  res.json(out);
 });
 
 app.get('/api/videos', (req, res) => res.json(listVideos()));
@@ -761,11 +758,12 @@ async function uploadFaceToS3(id, dataUrl) {
 async function trimVideoAndUpload(src, seconds) {
   const tmp = fs.mkdtempSync(path.join(WORK, 'trim-'));
   const out = path.join(tmp, 'clip.mp4');
+  const { path: local, cleanup } = await localInput(src.url);
   try {
-    await run(ffmpegPath, ['-y', '-i', src.url, '-t', String(seconds), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-movflags', '+faststart', out]);
+    await run(ffmpegPath, ['-y', '-i', local, '-t', String(seconds), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-movflags', '+faststart', out]);
     const key = `clips/${slug(path.basename(src.key, path.extname(src.key)))}-first${seconds}s-${Date.now()}-${randomUUID().slice(0, 8)}.mp4`;
     return uploadToS3(key, fs.readFileSync(out), 'video/mp4');
-  } finally { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } }
+  } finally { cleanup(); try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } }
 }
 
 // Pull any cloud-saved templates (templates/ prefix) down into the local library dir
@@ -1027,14 +1025,17 @@ async function runExportJob(jobId, s, { level = 1, intro = [], subs = [], outro 
   // the clip, so map video from input 0 and audio from input 1 WITHOUT -shortest — the
   // video governs length and the voice simply ends when the last line does.
   const audioMap = voiceMp3 ? ['-map', '0:v:0', '-map', '1:a:0'] : [];
-  await run(ffmpegPath, [
-    ...PROG, '-i', s.src.url,
-    ...(voiceMp3 ? ['-i', voiceMp3] : []),
-    '-vf', `${scalePre}subtitles='${assArg}':fontsdir='${FONTS_ARG}'`,
-    ...audioMap, ...THREADS,
-    '-pix_fmt', 'yuv420p', ...enc,
-    '-c:a', 'aac', '-ar', '44100', '-r', String(fps), '-y', mainOut,
-  ], (t) => setPct(Math.min(t, videoDur || t)));
+  const srcLocal = await localInput(s.src.url); // static ffmpeg segfaults on https input
+  try {
+    await run(ffmpegPath, [
+      ...PROG, '-i', srcLocal.path,
+      ...(voiceMp3 ? ['-i', voiceMp3] : []),
+      '-vf', `${scalePre}subtitles='${assArg}':fontsdir='${FONTS_ARG}'`,
+      ...audioMap, ...THREADS,
+      '-pix_fmt', 'yuv420p', ...enc,
+      '-c:a', 'aac', '-ar', '44100', '-r', String(fps), '-y', mainOut,
+    ], (t) => setPct(Math.min(t, videoDur || t)));
+  } finally { srcLocal.cleanup(); }
   processed += videoDur || 0;
   setPct(0);
   parts.push(mainOut);
