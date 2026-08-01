@@ -410,7 +410,7 @@ app.get('/api/_diag', async (req, res) => {
   if (v) {
     out.testVideo = v.url;
     try { const f = path.join(WORK, 'diag.jpg'); await run(ffmpegPath, ['-ss', '1', '-i', v.url, '-frames:v', '1', '-vf', 'scale=-2:120', '-q:v', '5', '-y', f], null, 20000); out.thumbTest = 'ok ' + (fs.existsSync(f) ? fs.statSync(f).size + 'b' : 'no file'); }
-    catch (e) { out.thumbTestErr = String(e.message).slice(0, 600); }
+    catch (e) { out.thumbTestErr = String(e.message).slice(-700); }
   }
   res.json(out);
 });
