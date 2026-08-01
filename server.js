@@ -8,19 +8,44 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { S3Client, PutObjectCommand, GetObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Load a local .env (KEY=VALUE per line) into process.env — no dependency. Existing
+// env vars win, so `aws configure` / real env vars still take precedence.
+(function loadDotenv() {
+  try {
+    const p = path.join(__dirname, '.env');
+    if (!fs.existsSync(p)) return;
+    for (const line of fs.readFileSync(p, 'utf8').split(/\r?\n/)) {
+      if (/^\s*#/.test(line) || !line.trim()) continue;
+      const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+      if (!m) continue;
+      let v = m[2].trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+      if (!(m[1] in process.env)) process.env[m[1]] = v;
+    }
+  } catch { /* ignore */ }
+})();
+
 const ffprobePath = ffprobeStatic.path;
 const WORK = path.join(__dirname, 'work');
 const TEMPLATES_DIR = path.join(__dirname, 'templates', 'subtitles'); // subtitle xlsx templates
 const THUMBS_DIR = path.join(__dirname, 'thumbs');            // generated poster frames
-for (const d of [WORK, TEMPLATES_DIR, THUMBS_DIR]) fs.mkdirSync(d, { recursive: true });
+const TRANSCRIPTS_DIR = path.join(__dirname, 'transcripts');  // cached speech-to-text per video
+const PREVIEWS_DIR = path.join(__dirname, 'previews');        // audio-stripped copies for browsers that reject bad audio
+const FACES_DIR = path.join(__dirname, 'faces');              // uploaded character faces, served publicly for the L3 API
+for (const d of [WORK, TEMPLATES_DIR, THUMBS_DIR, TRANSCRIPTS_DIR, PREVIEWS_DIR, FACES_DIR]) fs.mkdirSync(d, { recursive: true });
 
 const app = express();
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '30mb' })); // face images arrive as base64 data URLs
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/fonts', express.static(path.join(__dirname, 'assets', 'fonts'))); // @font-face for WYSIWYG preview
 app.use('/thumbs', express.static(THUMBS_DIR)); // static poster frames for template cards
+app.use('/previews', express.static(PREVIEWS_DIR, { acceptRanges: true })); // audio-stripped preview clips
+app.use('/faces', express.static(FACES_DIR)); // character faces (public URL for the Level 3 API)
 
 const upload = multer({ dest: WORK, limits: { fileSize: 1024 * 1024 * 1024 } });
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.m4v']);
@@ -41,6 +66,17 @@ function s3VideoKeys() {
 }
 function listVideos() {
   return s3VideoKeys().map((key) => ({ id: key, name: prettyName(key), url: s3PublicUrl(key), s3Uri: s3Uri(key) }));
+}
+
+// Some videos are their own template (no xlsx) — their subtitles come from
+// transcribing the audio. Catalogued in video-templates.json.
+function videoTemplates() {
+  const f = path.join(__dirname, 'video-templates.json');
+  let list = [];
+  if (fs.existsSync(f)) { try { list = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { /* ignore */ } }
+  return (Array.isArray(list) ? list : [])
+    .filter((t) => t && t.video && resolveVideo(t.video))
+    .map((t) => ({ id: slug(t.name || t.video), name: t.name || prettyName(t.video), type: String(t.type || '3'), video: t.video, transcribe: t.transcribe !== false, preview: !!t.preview }));
 }
 const TYPE_LABEL = { '0': 'Intro & Outro', '1': 'Subtitles', '2': 'Voiceover', '3': 'Manipulate heads' };
 function titleCase(s) { return String(s).replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()); }
@@ -72,9 +108,102 @@ function templateCard(t, match) {
     thumbUrl: vid ? `/thumbs/${encodeURIComponent(thumbName(vid))}` : null,
   };
 }
+function videoTemplateCard(t) {
+  return {
+    id: t.id, name: titleCase(t.name), type: t.type, typeLabel: TYPE_LABEL[t.type] || '',
+    subs: 0, placeholders: [], transcribe: t.transcribe,
+    videoId: t.video, videoUrl: s3PublicUrl(t.video), videoS3: s3Uri(t.video),
+    thumbUrl: `/thumbs/${encodeURIComponent(thumbName(t.video))}`,
+  };
+}
 function listTemplates() {
   const match = matchTemplateVideos();
-  return [...templates().values()].map((t) => templateCard(t, match));
+  return [...[...templates().values()].map((t) => templateCard(t, match)), ...videoTemplates().map(videoTemplateCard)];
+}
+
+// ---------- browser preview clips (audio stripped) ----------
+// Some source videos have a malformed audio track that makes browsers refuse to load
+// the whole media element even though the video stream is fine. We serve an
+// audio-stripped copy (video stream copied, no re-encode) for reliable in-browser preview.
+const previewName = (key) => path.basename(key, path.extname(key)) + '.mp4';
+const previewUrlFor = (key) => `/previews/${encodeURIComponent(previewName(key))}`;
+// Duration of the video stream specifically (the container duration can be a lie
+// when a malformed audio track is far longer than the actual video).
+function videoStreamDuration(url) {
+  return new Promise((resolve) => {
+    const p = spawn(ffprobePath, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=duration', '-of', 'csv=p=0', url]);
+    let out = ''; p.stdout.on('data', (d) => (out += d));
+    p.on('close', () => resolve(parseFloat(out) || null));
+    p.on('error', () => resolve(null));
+  });
+}
+// Build a browser-friendly preview: a faststart remux trimmed to the video's real
+// length. Trimming drops a corrupt over-long audio tail (a broken upload can have
+// audio far longer than the video) that would otherwise block in-browser load.
+// Stream-copy is fast; if the audio can't be copied cleanly, re-encode as a fallback.
+let previewInFlight = new Set();
+async function ensurePreview(key) {
+  const out = path.join(PREVIEWS_DIR, previewName(key));
+  if (fs.existsSync(out)) return out;
+  const src = resolveVideo(key);
+  if (!src) throw new Error('video not found in library');
+  const vdur = await videoStreamDuration(src.url);
+  const trim = vdur ? ['-t', String(vdur + 0.1)] : [];
+  const base = ['-y', '-err_detect', 'ignore_err', '-max_error_rate', '1.0', '-i', src.url, '-map', '0:v:0', '-map', '0:a:0?'];
+  const finish = ['-movflags', '+faststart', out];
+  try {
+    await run(ffmpegPath, [...base, '-c', 'copy', ...trim, ...finish]); // fast: stream copy
+  } catch (e1) {
+    try { fs.rmSync(out, { force: true }); } catch { /* ignore */ }
+    try {
+      await run(ffmpegPath, [...base, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', ...trim, ...finish]); // fallback: re-encode audio
+    } catch (e2) {
+      if (!(fs.existsSync(out) && fs.statSync(out).size > 100000)) throw e2;
+    }
+  }
+  return out;
+}
+// Non-blocking warm: kick off preview generation without awaiting (dedup in-flight).
+function warmPreview(key) {
+  if (fs.existsSync(path.join(PREVIEWS_DIR, previewName(key))) || previewInFlight.has(key)) return;
+  previewInFlight.add(key);
+  ensurePreview(key).catch((e) => console.warn('preview failed', key, e.message)).finally(() => previewInFlight.delete(key));
+}
+
+// ---------- transcription (speech-to-text for video-native templates) ----------
+const PYTHON_BIN = process.env.PYTHON_BIN || 'python';
+const WHISPER_MODEL = process.env.WHISPER_MODEL || 'medium';
+const transcriptCacheFile = (key) => path.join(TRANSCRIPTS_DIR, path.basename(key, path.extname(key)) + '.json');
+
+function runPython(args) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(PYTHON_BIN, args);
+    let out = '', err = '';
+    p.stdout.on('data', (d) => (out += d));
+    p.stderr.on('data', (d) => (err += d));
+    p.on('close', (code) => (code === 0 ? resolve(out) : reject(new Error('transcription failed: ' + (err.slice(-400) || 'exit ' + code)))));
+    p.on('error', (e) => reject(new Error(`python not available (${PYTHON_BIN}) — set PYTHON_BIN: ${e.message}`)));
+  });
+}
+
+// Transcribe a catalogued video into subtitle cues, cached on disk. The cache is
+// authoritative when present, so a committed transcript works without Python.
+async function transcribeVideo(key) {
+  const cache = transcriptCacheFile(key);
+  if (fs.existsSync(cache)) { try { return JSON.parse(fs.readFileSync(cache, 'utf8')); } catch { /* re-run */ } }
+  const src = resolveVideo(key);
+  if (!src) throw new Error('video not found in library');
+  const tmp = fs.mkdtempSync(path.join(WORK, 'tx-'));
+  const media = path.join(tmp, 'in.mp4');
+  try {
+    // download once — streaming a URL into the decoder re-seeks over HTTP and is slow
+    fs.writeFileSync(media, Buffer.from(await (await fetch(src.url)).arrayBuffer()));
+    const j = JSON.parse(await runPython([path.join(__dirname, 'scripts', 'transcribe.py'), media, WHISPER_MODEL]));
+    const subs = (j.segments || []).map((s, i) => ({ id: `sub-${i}`, start: +s.start, end: +s.end, text: s.text, person: s.speaker || 'Speaker 1' }));
+    const result = { subs, language: j.language, duration: j.duration, coverage: { decoded_frames: j.decoded_frames, undecodable_frames: j.undecodable_frames } };
+    fs.writeFileSync(cache, JSON.stringify(result, null, 2));
+    return result;
+  } finally { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } }
 }
 
 // Generate a static poster frame per video (used as the card thumbnail).
@@ -253,11 +382,39 @@ app.get('/api/videos', (req, res) => res.json(listVideos()));
 app.get('/api/subtitle-templates', (req, res) => res.json(listTemplates()));
 
 // parsed cues (+ placeholders) for a named template
-app.get('/api/subtitle-templates/:id', (req, res) => {
-  const t = templates().get(req.params.id);
-  if (!t) return res.status(404).json({ error: 'template not found' });
-  const card = templateCard(t, matchTemplateVideos());
-  res.json({ intro: t.intro, subs: t.subs, outro: t.outro, placeholders: t.placeholders, type: t.type, name: card.name, videoId: card.videoId, videoUrl: card.videoUrl, videoS3: card.videoS3, thumbUrl: card.thumbUrl });
+app.get('/api/subtitle-templates/:id', async (req, res) => {
+  const id = req.params.id;
+  const wantType = req.query.type != null ? String(req.query.type) : null;
+  const xlsx = templates().get(id);
+  const vt0 = videoTemplates().find((x) => x.id === id);
+  // A saved subtitle template and a video-native template can share an id (same name).
+  // The card sends its type so we resolve to the right one; without a hint we keep the
+  // old precedence (xlsx first).
+  let useXlsx = xlsx, vt = xlsx ? null : vt0;
+  if (wantType != null) {
+    if (xlsx && String(xlsx.type) === wantType) { useXlsx = xlsx; vt = null; }
+    else if (vt0 && String(vt0.type) === wantType) { useXlsx = null; vt = vt0; }
+    else { useXlsx = xlsx; vt = xlsx ? null : vt0; } // no exact match → best effort
+  }
+  if (useXlsx) {
+    const t = useXlsx;
+    const card = templateCard(t, matchTemplateVideos());
+    return res.json({ intro: t.intro, subs: t.subs, outro: t.outro, placeholders: t.placeholders, type: t.type, name: card.name, videoId: card.videoId, videoUrl: card.videoUrl, videoS3: card.videoS3, thumbUrl: card.thumbUrl });
+  }
+  // video-native template → subtitles transcribed from the audio (cached)
+  if (!vt) return res.status(404).json({ error: 'template not found' });
+  try {
+    const tr = vt.transcribe ? await transcribeVideo(vt.video) : { subs: [] };
+    const card = videoTemplateCard(vt);
+    // A well-formed file plays straight from S3. Only videos flagged `preview:true`
+    // (e.g. a broken audio track) get an audio-stripped/faststart preview instead.
+    let previewUrl = null;
+    if (vt.preview) {
+      const ready = fs.existsSync(path.join(PREVIEWS_DIR, previewName(vt.video)));
+      if (ready) previewUrl = previewUrlFor(vt.video); else warmPreview(vt.video);
+    }
+    res.json({ intro: [], subs: tr.subs || [], outro: [], placeholders: [], type: vt.type, name: card.name, videoId: card.videoId, videoUrl: card.videoUrl, videoS3: card.videoS3, previewUrl, thumbUrl: card.thumbUrl, transcribed: true, coverage: tr.coverage });
+  } catch (e) { res.status(500).json({ error: 'transcription failed: ' + String(e.message || e) }); }
 });
 
 // upload-your-own subtitle xlsx (no video) -> parsed cues
@@ -282,6 +439,34 @@ app.post('/api/subtitles', upload.single('xlsx'), (req, res) => {
     try { fs.unlinkSync(req.file.path); } catch {}
     res.status(500).json({ error: String(e.message || e) });
   }
+});
+
+// Opt-in: save an uploaded subtitle xlsx into the library so it shows up as a card and
+// persists. We write it into the local templates dir (the library's source) AND upload
+// a cloud copy to S3, so it survives restarts/redeploys (synced back on boot). Only
+// called when the user explicitly clicks "Save to library" — never on a normal upload.
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+app.post('/api/templates/save', upload.single('xlsx'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'xlsx file required' });
+  const cleanup = () => { try { fs.unlinkSync(req.file.path); } catch { /* ignore */ } };
+  try {
+    const buf = fs.readFileSync(req.file.path);
+    cleanup();
+    // Parse first so we can report what landed in the library (and reject junk files).
+    let parsed;
+    try { parsed = parseTemplates(buf); } catch { parsed = []; }
+    if (!parsed.length) return res.status(400).json({ error: 'No templates found in that sheet.' });
+    const base = slug(String(req.body?.name || path.basename(req.file.originalname || 'template', '.xlsx'))) || 'template';
+    const fileName = `${base}-${Date.now()}-${randomUUID().slice(0, 8)}.xlsx`;
+    // 1) local library copy — the library reads templates/subtitles/*.xlsx
+    fs.writeFileSync(path.join(TEMPLATES_DIR, fileName), buf);
+    TEMPLATE_CACHE = null; // force reload so the new card appears immediately
+    // 2) cloud copy (best-effort) so it isn't lost when local disk is ephemeral
+    let url = null;
+    if (s3Enabled) { try { url = await uploadToS3(`templates/${fileName}`, buf, XLSX_MIME); } catch (e) { console.warn('[templates] S3 copy failed:', e.message); } }
+    console.log(`[templates] saved ${fileName} to library (${parsed.map((t) => t.id).join(', ')})${url ? ' + S3' : ''}`);
+    res.json({ ids: parsed.map((t) => t.id), names: parsed.map((t) => t.name), file: fileName, url, bucket: s3Enabled ? S3_UPLOAD_BUCKET : null });
+  } catch (e) { cleanup(); res.status(500).json({ error: String(e.message || e) }); }
 });
 
 // ---------- ASS subtitle generation ----------
@@ -468,14 +653,221 @@ function applyTimeline(subs, timeline) {
   }
 }
 
+// ---------- Level 3: face swap + AI dub + lip-sync (Cobra API) ----------
+const COBRA_API_URL = process.env.COBRA_API_URL || 'https://a7c6n0seh4.execute-api.eu-west-1.amazonaws.com/Prod';
+// The Cobra pipeline must be able to download the face images, so they need a public
+// URL. Set PUBLIC_BASE_URL to the deployed origin; locally we fall back to the request
+// host (only reachable by the API if the server itself is public / tunnelled).
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || '';
+const publicBase = (req) => (PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+// The Cobra pipeline runs on AWS, so a face URL on localhost / a private LAN address
+// is unreachable. Detect that so we can reject before wasting a paid job.
+function isReachableBase(base) {
+  try {
+    const h = new URL(base).hostname;
+    return !(/^(localhost|127\.|0\.0\.0\.0|::1|10\.|192\.168\.|169\.254\.)/i.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h));
+  } catch { return false; }
+}
+
+function parseImageDataUrl(dataUrl) {
+  const m = /^data:(image\/(png|jpe?g|webp));base64,(.+)$/i.exec(dataUrl || '');
+  if (!m) throw new Error('face image must be a PNG/JPG/WebP data URL');
+  const ext = m[2].toLowerCase() === 'jpeg' ? 'jpg' : m[2].toLowerCase();
+  return { ext, mime: m[1], buffer: Buffer.from(m[3], 'base64') };
+}
+function saveFaceImage(id, dataUrl) {
+  const { ext, buffer } = parseImageDataUrl(dataUrl);
+  const file = `${slug(id) || 'face'}-${Date.now()}.${ext}`;
+  fs.writeFileSync(path.join(FACES_DIR, file), buffer);
+  return file;
+}
+
+// Optional S3 upload for faces. When S3_UPLOAD_BUCKET is set (+ AWS creds from the
+// default chain: `aws configure` locally, or AWS_* env vars in prod), an uploaded face
+// is stored in S3 and referenced by a presigned GET URL — reachable by the face-swap
+// service without making the bucket public. No config → falls back to local hosting.
+const S3_UPLOAD_BUCKET = process.env.S3_UPLOAD_BUCKET || '';
+const S3_UPLOAD_REGION = process.env.S3_UPLOAD_REGION || S3_REGION;
+const S3_UPLOAD_PREFIX = (process.env.S3_UPLOAD_PREFIX || 'faces/').replace(/^\/+/, '');
+const S3_UPLOAD_PUBLIC = process.env.S3_UPLOAD_PUBLIC === 'true'; // bucket serves objects publicly
+const s3Enabled = !!S3_UPLOAD_BUCKET;
+const s3Client = s3Enabled ? new S3Client({ region: S3_UPLOAD_REGION }) : null;
+
+async function uploadToS3(key, buffer, mime) {
+  await s3Client.send(new PutObjectCommand({ Bucket: S3_UPLOAD_BUCKET, Key: key, Body: buffer, ContentType: mime }));
+  if (S3_UPLOAD_PUBLIC) return `https://${S3_UPLOAD_BUCKET}.s3.${S3_UPLOAD_REGION}.amazonaws.com/${key.split('/').map(encodeURIComponent).join('/')}`;
+  return getSignedUrl(s3Client, new GetObjectCommand({ Bucket: S3_UPLOAD_BUCKET, Key: key }), { expiresIn: 604800 }); // 7 days
+}
+async function uploadFaceToS3(id, dataUrl) {
+  const { ext, mime, buffer } = parseImageDataUrl(dataUrl);
+  const key = `${S3_UPLOAD_PREFIX}${slug(id) || 'face'}-${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`;
+  return uploadToS3(key, buffer, mime);
+}
+// Trim the source video to its first `seconds` and upload the clip to S3 → reachable URL.
+// `-t` makes ffmpeg stop reading early, so only the first slice is downloaded.
+async function trimVideoAndUpload(src, seconds) {
+  const tmp = fs.mkdtempSync(path.join(WORK, 'trim-'));
+  const out = path.join(tmp, 'clip.mp4');
+  try {
+    await run(ffmpegPath, ['-y', '-i', src.url, '-t', String(seconds), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-movflags', '+faststart', out]);
+    const key = `clips/${slug(path.basename(src.key, path.extname(src.key)))}-first${seconds}s-${Date.now()}-${randomUUID().slice(0, 8)}.mp4`;
+    return uploadToS3(key, fs.readFileSync(out), 'video/mp4');
+  } finally { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } }
+}
+
+// Pull any cloud-saved templates (templates/ prefix) down into the local library dir
+// so "Save to library" survives restarts/redeploys on ephemeral disks. Best-effort.
+async function s3BodyToBuffer(body) {
+  const chunks = [];
+  for await (const c of body) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+  return Buffer.concat(chunks);
+}
+async function syncTemplatesFromS3() {
+  if (!s3Enabled) return 0;
+  let count = 0, token;
+  do {
+    const out = await s3Client.send(new ListObjectsV2Command({ Bucket: S3_UPLOAD_BUCKET, Prefix: 'templates/', ContinuationToken: token }));
+    for (const obj of out.Contents || []) {
+      if (!/\.xlsx$/i.test(obj.Key)) continue;
+      const local = path.join(TEMPLATES_DIR, path.basename(obj.Key));
+      if (fs.existsSync(local)) continue;
+      try {
+        const g = await s3Client.send(new GetObjectCommand({ Bucket: S3_UPLOAD_BUCKET, Key: obj.Key }));
+        fs.writeFileSync(local, await s3BodyToBuffer(g.Body));
+        count++;
+      } catch (e) { console.warn('[templates] sync failed for', obj.Key, e.message); }
+    }
+    token = out.IsTruncated ? out.NextContinuationToken : null;
+  } while (token);
+  if (count) TEMPLATE_CACHE = null;
+  return count;
+}
+
+// Upload a face image on the frontend's request; returns a reachable public URL.
+app.post('/api/upload-face', async (req, res) => {
+  try {
+    const { dataUrl, id = 'face' } = req.body || {};
+    if (!dataUrl) return res.status(400).json({ error: 'dataUrl required' });
+    if (s3Enabled) return res.json({ url: await uploadFaceToS3(id, dataUrl), storage: 's3' });
+    // No S3: host locally (only reachable by the API once the server is public)
+    return res.json({ url: null, storage: 'local', hint: 'S3 not configured — set S3_UPLOAD_BUCKET (+ AWS creds) to make uploads reachable, or paste a public image URL.' });
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// Submit a Level 3 job: host any uploaded faces, build the Cobra payload, POST it.
+// Local jobs bridge the slow prep work (trim → upload → Cobra submit) so the browser's
+// POST returns instantly and the whole thing is pollable.  localId → { stage, cobraJobId, error }
+const level3Jobs = new Map();
+
+app.post('/level3', async (req, res) => {
+  try {
+    const { videoId, subs = [], faces = {}, language = 'en-US', limitSeconds, subsBurn = true, trimSeconds } = req.body || {};
+    const src = resolveVideo(videoId);
+    if (!src) return res.status(404).json({ error: 'video not found in library' });
+    const trim = +trimSeconds > 0 ? +trimSeconds : 0;
+    if (trim && !s3Enabled) return res.status(400).json({ error: 'Trimming needs S3 upload configured (S3_UPLOAD_BUCKET) to host the clip.' });
+    const base = publicBase(req);
+    const hasUploaded = Object.values(faces).some((f) => f && f.dataUrl && !(f.url && /^https?:\/\//i.test(f.url)));
+    if (hasUploaded && !s3Enabled && !isReachableBase(base)) {
+      return res.status(400).json({ error: `Uploaded faces are served from ${base}, which the face-swap service (on AWS) can't reach. Configure S3 upload (S3_UPLOAD_BUCKET), paste a public image URL, or set PUBLIC_BASE_URL to a reachable origin.` });
+    }
+    // Every character present in the clip (trim window, or the whole video) must have
+    // a face uploaded — enforce it up front so the browser gets an immediate error.
+    const effForCheck = trim ? subs.filter((c) => +c.start < trim) : subs;
+    const presentIds = [...new Set(effForCheck.map((c) => slug(cleanSpeaker(c.person))).filter(Boolean))];
+    const missingFace = presentIds.filter((id) => { const f = faces[id]; return !(f && (f.url || f.dataUrl)); });
+    if (missingFace.length) return res.status(400).json({ error: `Upload a face for every character${trim ? ` in the first ${trim}s` : ''}: missing ${missingFace.join(', ')}.` });
+
+    // Respond immediately with a local job id; do the heavy lifting in the background.
+    const localId = `l3_${randomUUID()}`;
+    const job = { stage: 'preparing', cobraJobId: null, error: null, createdAt: Date.now() };
+    level3Jobs.set(localId, job);
+    console.log(`[L3] ${localId} accepted — video=${videoId} trim=${trim || 'none'} faces=${Object.keys(faces).length} subs=${subs.length}`);
+    res.json({ jobId: localId, status: 'preparing' });
+
+    (async () => {
+      try {
+        let sourceUrl = src.url;
+        let effSubs = subs;
+        if (trim) {
+          job.stage = 'trimming';
+          console.log(`[L3] ${localId} trimming to first ${trim}s…`);
+          sourceUrl = await trimVideoAndUpload(src, trim);
+          effSubs = subs.filter((c) => +c.start < trim).map((c) => ({ ...c, end: Math.min(+c.end, trim) }));
+          console.log(`[L3] ${localId} trimmed clip uploaded.`);
+        }
+        job.stage = 'uploading-faces';
+        // Every speaker in the (trimmed) subtitles becomes a character. A face is attached
+        // when one was provided; a speaker with no face keeps its original on-screen face
+        // (still dubbed/lip-synced) — its lines are NOT dropped.
+        const speakerName = new Map(); // id -> display name, first-seen order
+        for (const c of effSubs) { const nm = cleanSpeaker(c.person); const id = slug(nm); if (id && !speakerName.has(id)) speakerName.set(id, nm); }
+        const characters = [];
+        for (const [id, name] of speakerName) {
+          const f = faces[id];
+          const ch = { id, name };
+          let imageUrl = null;
+          if (f && f.url && /^https?:\/\//i.test(f.url)) imageUrl = f.url.trim();
+          else if (f && f.dataUrl) imageUrl = s3Enabled ? await uploadFaceToS3(id, f.dataUrl) : `${base}/faces/${saveFaceImage(id, f.dataUrl)}`;
+          if (imageUrl) ch.face = { image_url: imageUrl, target_ref: (f && f.target_ref) || 'auto' };
+          characters.push(ch);
+        }
+        // Every character present must have a face (validated synchronously above; this
+        // is a backstop). No minimum-count rule.
+        const faceless = characters.filter((c) => !c.face);
+        if (faceless.length) throw new Error(`Missing a face for: ${faceless.map((c) => c.name).join(', ')}`);
+        const subtitles = effSubs
+          .filter((c) => c.text && c.text.trim() && slug(cleanSpeaker(c.person)))
+          .map((c) => ({ id: c.id, character_id: slug(cleanSpeaker(c.person)), start_sec: +c.start, end_sec: +c.end, text: c.text }));
+        if (!subtitles.length) throw new Error(trim ? `No spoken lines in the first ${trim}s.` : 'No spoken subtitle lines.');
+
+        const payload = { video_url: sourceUrl, language, characters, subtitles };
+        if (subsBurn === false) payload.subs = false;
+        if (limitSeconds) payload.limit_seconds = limitSeconds;
+        job.stage = 'submitting';
+        console.log(`[L3] ${localId} → Cobra /generate (${characters.length} chars, ${subtitles.length} lines):\n` + JSON.stringify(payload, null, 2));
+        const r = await fetch(`${COBRA_API_URL}/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const j = await r.json().catch(() => ({}));
+        if (r.status !== 202) throw new Error(j.error || `Cobra API returned ${r.status}`);
+        job.cobraJobId = j.job_id;
+        job.stage = 'payload';
+        console.log(`[L3] ${localId} submitted → Cobra job ${j.job_id}`);
+      } catch (e) {
+        job.error = String(e.message || e);
+        console.error(`[L3] ${localId} prepare failed:`, job.error);
+      }
+    })();
+  } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+});
+
+// Poll a Level 3 job. Reports our prep stages until Cobra has a job id, then proxies Cobra.
+app.get('/level3/:jobId', async (req, res) => {
+  try {
+    const id = req.params.jobId;
+    const local = level3Jobs.get(id);
+    if (local) {
+      if (local.error) return res.json({ status: 'failed', error: local.error });
+      if (!local.cobraJobId) return res.json({ status: 'preparing', stage: local.stage });
+    }
+    const cobraId = local ? local.cobraJobId : id;
+    const r = await fetch(`${COBRA_API_URL}/jobs/${encodeURIComponent(cobraId)}`);
+    if (r.status === 404) return res.status(404).json({ error: 'job not found' });
+    const out = await r.json();
+    console.log(`[L3] poll ${id}${local ? ` (cobra ${cobraId})` : ''} → ${out.status || '?'}${out.stage ? '/' + out.stage : ''}`);
+    res.json(out);
+  } catch (e) { res.status(502).json({ error: String(e.message || e) }); }
+});
+
 const jobs = new Map(); // jobId -> { percent, stage, done, error, file, dir }
 
 // Kick off an export job; returns immediately with a jobId. Progress via SSE.
 app.post('/export', async (req, res) => {
-  const { videoId, level = 1, faceswap = false } = req.body || {};
-  if (faceswap) return res.status(400).json({ error: 'Level 3 (face swap & lip sync) is not available yet.' });
-  const src = resolveVideo(videoId);
-  if (!src) return res.status(404).json({ error: 'video not found in library' });
+  const { videoId, level = 1, sourceUrl } = req.body || {};
+  // Burn & Export only burns subtitles (+ optional voiceover). Face swap is a separate
+  // pipeline (POST /level3); its generated result can be burned here by passing sourceUrl.
+  let src;
+  if (sourceUrl && /^https?:\/\//i.test(sourceUrl)) src = { key: path.basename(String(videoId || 'result.mp4')), url: sourceUrl, s3Uri: null };
+  else { src = resolveVideo(videoId); if (!src) return res.status(404).json({ error: 'video not found in library' }); }
   let meta = metaCache.get(src.url);
   if (!meta) {
     try { meta = await probe(src.url); metaCache.set(src.url, meta); }
@@ -642,5 +1034,13 @@ const PORT = process.env.PORT || 5178;
 app.listen(PORT, async () => {
   console.log(`Subtitle burner running on port ${PORT}`);
   await generateThumbs();
+  if (s3Enabled) { try { const n = await syncTemplatesFromS3(); if (n) console.log(`Synced ${n} saved template(s) from cloud`); } catch (e) { console.warn('template cloud sync failed:', e.message); } }
   console.log(`Library: ${listVideos().length} videos, ${listTemplates().length} templates`);
+  // Warm transcription + preview caches in the background so the first selection is instant.
+  for (const vt of videoTemplates()) {
+    if (vt.transcribe && !fs.existsSync(transcriptCacheFile(vt.video))) {
+      transcribeVideo(vt.video).then((r) => console.log(`Transcribed ${vt.video}: ${r.subs.length} lines`)).catch((e) => console.warn(`Transcribe ${vt.video} failed: ${e.message}`));
+    }
+    if (vt.preview) warmPreview(vt.video);
+  }
 });

@@ -4,3 +4,20 @@ server.log
 videos/
 .gstack/
 thumbs/
+
+# secrets & generated uploads
+.env
+faces/
+previews/
+
+# python artifacts
+__pycache__/
+
+# personal / research files — NOT part of the app, never commit
+*TruthFinderReport*
+payload.json
+pdf_to_base64.py
+
+# example payloads contain (expiring) presigned S3 URLs — keep out of history
+docs/level3-cobra-payload.json
+docs/level3-payload.json

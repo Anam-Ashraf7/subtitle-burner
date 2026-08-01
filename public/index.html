@@ -13,9 +13,10 @@
 <nav class="nav">
   <div class="brand"><span class="brand-mark">▶</span> VIDEO STUDIO</div>
   <div class="nav-links">
-    <span>Home</span>
-    <span>My Renders</span>
+    <span id="navHome">Home</span>
+    <span id="navRenders">My Renders</span>
     <span id="navUpload" class="nav-upload">⬆ Upload xlsx</span>
+    <span id="navSaveTpl" class="nav-upload" hidden title="Save this template to your library">☁ Save to library</span>
   </div>
 </nav>
 
@@ -50,6 +51,19 @@
     <button id="continueBtn" class="btn-play">Create video →</button>
   </div>
 </div>
+
+<!-- ===================== MY RENDERS VIEW ===================== -->
+<section id="rendersView" class="rendersview" hidden>
+  <div class="studio-bar">
+    <button id="rendersBack" class="btn-back">← Library</button>
+    <div class="studio-heading">
+      <span class="sh-now">MY RENDERS</span>
+      <span class="sh-title">Generated videos</span>
+      <span class="sh-mode">kept while the link is valid (~7 days)</span>
+    </div>
+  </div>
+  <div id="rendersList" class="renders-list"></div>
+</section>
 
 <!-- ===================== FORM VIEW ===================== -->
 <section id="formView" class="formview" hidden>
@@ -118,6 +132,7 @@
       <div class="preview-controls">
         <button id="playFull" class="ghost">▶ Preview intro → video → outro</button>
         <button id="stopPreview" class="ghost" hidden>■ Stop</button>
+        <button id="previewToggle" class="ghost toggle" hidden>▶ Showing: new video · tap for original</button>
       </div>
 
       <div id="substyleBox" class="render-box">
@@ -160,13 +175,25 @@
       </div>
 
       <div id="faceBox" class="render-box" hidden>
-        <div class="render-head">Face swap &amp; lip sync <span class="hint">— Level 3 · upload a face for each character</span></div>
+        <div class="render-head">Face swap &amp; lip sync <span class="hint">— Level 3 · a face for each character</span></div>
         <div id="faceChars" class="charlist"></div>
+        <div class="l3-foot">
+          <label class="l3-opt"><input type="checkbox" id="l3Trim" /> Only process the first <input type="number" id="l3TrimSecs" min="1" max="600" step="1" value="27" class="l3-num" /> seconds <span class="hint">(trims the clip — faster &amp; cheaper)</span></label>
+          <button id="level3Btn">✨ Generate face-swap video (Level 3)</button>
+          <div id="level3Msg" class="msg"></div>
+          <div id="level3Progress" class="l3-progress" hidden>
+            <div class="l3-stagebar"><div id="l3Bar" class="l3-bar"></div></div>
+            <div class="l3-status"><span id="l3Stage">Submitting…</span><span id="l3Elapsed"></span></div>
+            <a id="l3Result" class="l3-result" href="#" target="_blank" rel="noopener" hidden>⬇ Download result</a>
+            <button id="l3Dismiss" class="l3-dismiss" hidden>Dismiss</button>
+          </div>
+        </div>
       </div>
 
       <div class="render-box">
         <div class="render-head">Export</div>
         <div id="chosenTemplate" class="chosen-template"></div>
+        <div id="exportSource" class="hint" style="margin:2px 0 10px"></div>
         <div class="render-row">
           <label class="sel">Quality
             <select id="qualitySel">
@@ -218,6 +245,15 @@
 </section>
 
 <input type="file" id="xlsxInput" accept=".xlsx" hidden />
+
+<!-- persistent Level 3 job indicator — survives navigation/reload -->
+<div id="l3Banner" class="l3-banner" hidden>
+  <span class="l3-banner-dot"></span>
+  <div class="l3-banner-body"><b>Level 3 video</b><span id="l3BannerStage">preparing…</span></div>
+  <a id="l3BannerLink" class="l3-banner-link" href="#" target="_blank" rel="noopener" hidden>⬇ Download</a>
+  <button id="l3BannerX" class="l3-banner-x" title="Dismiss">✕</button>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>

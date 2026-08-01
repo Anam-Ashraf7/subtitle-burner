@@ -1,0 +1,936 @@
+{
+  "subs": [
+    {
+      "id": "sub-0",
+      "start": 0,
+      "end": 2.34,
+      "text": "Kinda grabs you by the boo-boo, don't it?",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-1",
+      "start": 2.6,
+      "end": 3.08,
+      "text": "You good?",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-2",
+      "start": 3.48,
+      "end": 4.84,
+      "text": "I wanna strip down on my underwear.",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-3",
+      "start": 5.08,
+      "end": 5.36,
+      "text": "What?",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-4",
+      "start": 5.58,
+      "end": 6.4,
+      "text": "It's hammer time!",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-5",
+      "start": 6.58,
+      "end": 7.3,
+      "text": "Paul, pull over!",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-6",
+      "start": 7.38,
+      "end": 7.98,
+      "text": "You're drunk!",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-7",
+      "start": 8.08,
+      "end": 9.7,
+      "text": "Hey, what's in that shit, man?",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-8",
+      "start": 10.12,
+      "end": 11.42,
+      "text": "Mostly top-shelf vodka.",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-9",
+      "start": 11.68,
+      "end": 12.2,
+      "text": "What else?",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-10",
+      "start": 12.42,
+      "end": 13.88,
+      "text": "It's got some calico in it.",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-11",
+      "start": 14.16,
+      "end": 14.44,
+      "text": "Calico?",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-12",
+      "start": 14.46,
+      "end": 15.14,
+      "text": "What's calico?",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-13",
+      "start": 15.22,
+      "end": 16.06,
+      "text": "It's cat piss.",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-14",
+      "start": 16.28,
+      "end": 16.92,
+      "text": "Cat piss?",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-15",
+      "start": 17.1,
+      "end": 18.64,
+      "text": "Yeah, my cat drank my vodka!",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-16",
+      "start": 18.8,
+      "end": 19.18,
+      "text": "What?",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-17",
+      "start": 19.3,
+      "end": 21.7,
+      "text": "I had it on the table, and the little fucker drank it!",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-18",
+      "start": 21.74,
+      "end": 22.48,
+      "text": "Are you serious?",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-19",
+      "start": 22.54,
+      "end": 22.88,
+      "text": "Yeah!",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-20",
+      "start": 23.02,
+      "end": 25.74,
+      "text": "I had to follow him around with a bottle for three days before I got it back.",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-21",
+      "start": 26.28,
+      "end": 27.72,
+      "text": "So we're drinking cat piss?",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-22",
+      "start": 27.84,
+      "end": 28.64,
+      "text": "Chuck, what are we gonna do?",
+      "person": "Schumer Aide"
+    },
+    {
+      "id": "sub-23",
+      "start": 28.72,
+      "end": 29.4,
+      "text": "Mitch is dead!",
+      "person": "Schumer Aide"
+    },
+    {
+      "id": "sub-24",
+      "start": 29.4,
+      "end": 30.58,
+      "text": "Same thing we always do.",
+      "person": "Chuck Schumer"
+    },
+    {
+      "id": "sub-25",
+      "start": 30.68,
+      "end": 31.74,
+      "text": "Try and take over the world.",
+      "person": "Chuck Schumer"
+    },
+    {
+      "id": "sub-26",
+      "start": 31.9,
+      "end": 32.7,
+      "text": "Take over the world?",
+      "person": "Schumer Aide"
+    },
+    {
+      "id": "sub-27",
+      "start": 32.94,
+      "end": 33.38,
+      "text": "Exactly.",
+      "person": "Chuck Schumer"
+    },
+    {
+      "id": "sub-28",
+      "start": 33.54,
+      "end": 34.22,
+      "text": "Now hold him steady.",
+      "person": "Chuck Schumer"
+    },
+    {
+      "id": "sub-29",
+      "start": 34.36,
+      "end": 36,
+      "text": "But seriously, Chuck, what are we gonna do?",
+      "person": "Chuck Schumer"
+    },
+    {
+      "id": "sub-30",
+      "start": 36.3,
+      "end": 37.56,
+      "text": "Mitch has been missing for weeks!",
+      "person": "Schumer Aide"
+    },
+    {
+      "id": "sub-31",
+      "start": 37.88,
+      "end": 38.44,
+      "text": "So what?",
+      "person": "Chuck Schumer"
+    },
+    {
+      "id": "sub-32",
+      "start": 38.86,
+      "end": 40.28,
+      "text": "The peasants are asking questions.",
+      "person": "Chuck Schumer"
+    },
+    {
+      "id": "sub-33",
+      "start": 40.72,
+      "end": 41.44,
+      "text": "Let him ask!",
+      "person": "Schumer Aide"
+    },
+    {
+      "id": "sub-34",
+      "start": 41.66,
+      "end": 42.94,
+      "text": "Mitch still has work to do!",
+      "person": "Schumer Aide"
+    },
+    {
+      "id": "sub-35",
+      "start": 43.06,
+      "end": 43.44,
+      "text": "Work?",
+      "person": "Schumer Aide"
+    },
+    {
+      "id": "sub-36",
+      "start": 43.96,
+      "end": 44.66,
+      "text": "What work?",
+      "person": "Schumer Aide"
+    },
+    {
+      "id": "sub-37",
+      "start": 44.84,
+      "end": 45.54,
+      "text": "He's dead!",
+      "person": "Schumer Aide"
+    },
+    {
+      "id": "sub-38",
+      "start": 45.64,
+      "end": 50.44,
+      "text": "He's got bills to sign, and we need him to vote no on the SAVE Act.",
+      "person": "Chuck Schumer"
+    },
+    {
+      "id": "sub-39",
+      "start": 50.54,
+      "end": 51.94,
+      "text": "How in the hell are we supposed to do that?",
+      "person": "Schumer Aide"
+    },
+    {
+      "id": "sub-40",
+      "start": 52.36,
+      "end": 53.2,
+      "text": "Mitch is dead!",
+      "person": "Schumer Aide"
+    },
+    {
+      "id": "sub-41",
+      "start": 53.26,
+      "end": 54.14,
+      "text": "You hear that, Mitch?",
+      "person": "Chuck Schumer"
+    },
+    {
+      "id": "sub-42",
+      "start": 54.56,
+      "end": 58.88,
+      "text": "He wants to know how you're gonna sign bills and vote no on the SAVE Act!",
+      "person": "Schumer Aide"
+    },
+    {
+      "id": "sub-43",
+      "start": 58.88,
+      "end": 65,
+      "text": "Have you or someone you know experienced overwhelming anxiety after hearing the words Happy Fourth of July?",
+      "person": "Chuck Schumer"
+    },
+    {
+      "id": "sub-44",
+      "start": 68.09,
+      "end": 70.51,
+      "text": "You may be suffering from...",
+      "person": "Announcer"
+    },
+    {
+      "id": "sub-45",
+      "start": 70.51,
+      "end": 71.09,
+      "text": "...idiot.",
+      "person": "Announcer"
+    },
+    {
+      "id": "sub-46",
+      "start": 71.21,
+      "end": 71.61,
+      "text": "Idiot.",
+      "person": "Announcer"
+    },
+    {
+      "id": "sub-47",
+      "start": 71.91,
+      "end": 73.59,
+      "text": "Independence Day-induced defense trauma.",
+      "person": "Announcer"
+    },
+    {
+      "id": "sub-48",
+      "start": 73.77,
+      "end": 74.79,
+      "text": "Common symptoms include...",
+      "person": "Announcer"
+    },
+    {
+      "id": "sub-49",
+      "start": 74.79,
+      "end": 75.61,
+      "text": "Stolen land!",
+      "person": "Announcer"
+    },
+    {
+      "id": "sub-50",
+      "start": 75.83,
+      "end": 78.57,
+      "text": "Screaming, stolen land at America's 250th birthday.",
+      "person": "Announcer"
+    },
+    {
+      "id": "sub-51",
+      "start": 79.91,
+      "end": 81.89,
+      "text": "Panic attacks over hot dogs, fireworks, or flags.",
+      "person": "Announcer"
+    },
+    {
+      "id": "sub-52",
+      "start": 82.07,
+      "end": 83.19,
+      "text": "Fourth of July is racist!",
+      "person": "Announcer"
+    },
+    {
+      "id": "sub-53",
+      "start": 83.35,
+      "end": 85.21,
+      "text": "Random outbursts calling Fourth of July racist.",
+      "person": "Announcer"
+    },
+    {
+      "id": "sub-54",
+      "start": 85.59,
+      "end": 87.27,
+      "text": "Excessive cable news meltdowns about freedom.",
+      "person": "Announcer"
+    },
+    {
+      "id": "sub-55",
+      "start": 87.67,
+      "end": 89.23,
+      "text": "General misery during the greatest holiday ever.",
+      "person": "Announcer"
+    },
+    {
+      "id": "sub-56",
+      "start": 89.23,
+      "end": 92.05,
+      "text": "Fortunately, real help is finally available.",
+      "person": "Announcer"
+    },
+    {
+      "id": "sub-57",
+      "start": 92.17,
+      "end": 95.51,
+      "text": "And that help comes in one easy-to-swallow pill called Magasil.",
+      "person": "Announcer"
+    },
+    {
+      "id": "sub-58",
+      "start": 95.69,
+      "end": 96.21,
+      "text": "Magasil.",
+      "person": "Announcer"
+    },
+    {
+      "id": "sub-59",
+      "start": 96.77,
+      "end": 101.93,
+      "text": "The number one leading patriot prescribed remedy for loving America agai- Heh, this sucks.",
+      "person": "Announcer"
+    },
+    {
+      "id": "sub-60",
+      "start": 102.39,
+      "end": 104.29,
+      "text": "I got hairy legs that turned blonde in the sun.",
+      "person": "Democrat Montage"
+    },
+    {
+      "id": "sub-61",
+      "start": 104.69,
+      "end": 107.15,
+      "text": "Some chick named Alexis Podesta was wearing a wire the whole time.",
+      "person": "Democrat Montage"
+    },
+    {
+      "id": "sub-62",
+      "start": 107.49,
+      "end": 107.85,
+      "text": "Ashley!",
+      "person": "Democrat Montage"
+    },
+    {
+      "id": "sub-63",
+      "start": 108.07,
+      "end": 108.91,
+      "text": "It's shower time!",
+      "person": "Democrat Montage"
+    },
+    {
+      "id": "sub-64",
+      "start": 109.05,
+      "end": 111.13,
+      "text": "I've been watching this disaster from day one.",
+      "person": "Democrat Montage"
+    },
+    {
+      "id": "sub-65",
+      "start": 111.41,
+      "end": 115.41,
+      "text": "Fake news, fake investigations under Sleepy Joe, but now the truth is out!",
+      "person": "Democrat Montage"
+    },
+    {
+      "id": "sub-66",
+      "start": 115.49,
+      "end": 117.05,
+      "text": "My chief of staff ratted me out!",
+      "person": "Democrat Montage"
+    },
+    {
+      "id": "sub-67",
+      "start": 117.05,
+      "end": 119.81,
+      "text": "My son Hunter is the smartest person I know.",
+      "person": "Democrat Montage"
+    },
+    {
+      "id": "sub-68",
+      "start": 120.37,
+      "end": 122.07,
+      "text": "They got my wife's taxes and everything!",
+      "person": "Democrat Montage"
+    },
+    {
+      "id": "sub-69",
+      "start": 122.67,
+      "end": 123.99,
+      "text": "I married my son's babysitter.",
+      "person": "Democrat Montage"
+    },
+    {
+      "id": "sub-70",
+      "start": 124.11,
+      "end": 126.67,
+      "text": "The FBI wires, the guilty pleas, the whistleblowers.",
+      "person": "Democrat Montage"
+    },
+    {
+      "id": "sub-71",
+      "start": 127.11,
+      "end": 128.17,
+      "text": "Gavin Newsom is finished!",
+      "person": "Democrat Montage"
+    },
+    {
+      "id": "sub-72",
+      "start": 128.19,
+      "end": 130.47,
+      "text": "Have you ever had to lie to a country, Mrs.",
+      "person": "Dr. Fauci"
+    },
+    {
+      "id": "sub-73",
+      "start": 130.67,
+      "end": 130.87,
+      "text": "Gabbard?",
+      "person": "Dr. Fauci"
+    },
+    {
+      "id": "sub-74",
+      "start": 131.19,
+      "end": 131.63,
+      "text": "No, sir.",
+      "person": "Tulsi Gabbard"
+    },
+    {
+      "id": "sub-75",
+      "start": 131.87,
+      "end": 138.09,
+      "text": "Ever balanced global alliances while funding gain-of-function research and used follow-the-science to control the narrative?",
+      "person": "Dr. Fauci"
+    },
+    {
+      "id": "sub-76",
+      "start": 138.17,
+      "end": 138.69,
+      "text": "No, sir.",
+      "person": "Tulsi Gabbard"
+    },
+    {
+      "id": "sub-77",
+      "start": 138.85,
+      "end": 145.11,
+      "text": "Ever had to make calls that kept Democrats safe while filling your bank account with taxpayer money and big pharma grants?",
+      "person": "Dr. Fauci"
+    },
+    {
+      "id": "sub-78",
+      "start": 145.29,
+      "end": 145.79,
+      "text": "No, sir.",
+      "person": "Tulsi Gabbard"
+    },
+    {
+      "id": "sub-79",
+      "start": 145.79,
+      "end": 147.65,
+      "text": "My team always followed orders, Mrs.",
+      "person": "Dr. Fauci"
+    },
+    {
+      "id": "sub-80",
+      "start": 147.83,
+      "end": 147.99,
+      "text": "Gabbard.",
+      "person": "Dr. Fauci"
+    },
+    {
+      "id": "sub-81",
+      "start": 148.17,
+      "end": 150.35,
+      "text": "They followed orders or the lockdowns failed.",
+      "person": "Dr. Fauci"
+    },
+    {
+      "id": "sub-82",
+      "start": 150.65,
+      "end": 151.17,
+      "text": "Are we clear?",
+      "person": "Dr. Fauci"
+    },
+    {
+      "id": "sub-83",
+      "start": 151.41,
+      "end": 151.83,
+      "text": "Yes, sir.",
+      "person": "Tulsi Gabbard"
+    },
+    {
+      "id": "sub-84",
+      "start": 151.87,
+      "end": 152.63,
+      "text": "Are we clear?",
+      "person": "Dr. Fauci"
+    },
+    {
+      "id": "sub-85",
+      "start": 153.25,
+      "end": 153.59,
+      "text": "Crystal.",
+      "person": "Tulsi Gabbard"
+    },
+    {
+      "id": "sub-86",
+      "start": 153.77,
+      "end": 155.15,
+      "text": "I want to give out free money!",
+      "person": "Socialist Candidate"
+    },
+    {
+      "id": "sub-87",
+      "start": 155.69,
+      "end": 157.11,
+      "text": "I want to give out free healthcare!",
+      "person": "Socialist Candidate"
+    },
+    {
+      "id": "sub-88",
+      "start": 157.65,
+      "end": 159.37,
+      "text": "I want to give out free rent!",
+      "person": "Socialist Candidate"
+    },
+    {
+      "id": "sub-89",
+      "start": 159.37,
+      "end": 161.05,
+      "text": "You'll give out everything for free!",
+      "person": "Socialist Candidate"
+    },
+    {
+      "id": "sub-90",
+      "start": 161.19,
+      "end": 163.17,
+      "text": "And the taxpayers will pay for it!",
+      "person": "Socialist Candidate"
+    },
+    {
+      "id": "sub-91",
+      "start": 163.27,
+      "end": 164.05,
+      "text": "And like it!",
+      "person": "Socialist Candidate"
+    },
+    {
+      "id": "sub-92",
+      "start": 164.09,
+      "end": 166.17,
+      "text": "Okay comrades, are you like ready to order?",
+      "person": "Waiter"
+    },
+    {
+      "id": "sub-93",
+      "start": 166.29,
+      "end": 167.97,
+      "text": "How much for some fire water?",
+      "person": "Customer"
+    },
+    {
+      "id": "sub-94",
+      "start": 168.27,
+      "end": 170.41,
+      "text": "How much is it for a lamb sandwich?",
+      "person": "Customer"
+    },
+    {
+      "id": "sub-95",
+      "start": 170.63,
+      "end": 171.35,
+      "text": "Everything's free.",
+      "person": "Waiter"
+    },
+    {
+      "id": "sub-96",
+      "start": 171.43,
+      "end": 172.67,
+      "text": "How is everything free?",
+      "person": "Waiter"
+    },
+    {
+      "id": "sub-97",
+      "start": 180.53,
+      "end": 182.71,
+      "text": "Haven't you listened to anything I've said?",
+      "person": "Waiter"
+    },
+    {
+      "id": "sub-98",
+      "start": 183.41,
+      "end": 184.43,
+      "text": "Sorry, I was thinking about a goat.",
+      "person": "Customer"
+    },
+    {
+      "id": "sub-99",
+      "start": 184.73,
+      "end": 186.49,
+      "text": "This free fire water is amazing.",
+      "person": "Customer"
+    },
+    {
+      "id": "sub-100",
+      "start": 187.45,
+      "end": 188.91,
+      "text": "This free sandwich tastes so good.",
+      "person": "Customer"
+    },
+    {
+      "id": "sub-101",
+      "start": 189.21,
+      "end": 190.21,
+      "text": "Everything free tastes good.",
+      "person": "Waiter"
+    },
+    {
+      "id": "sub-102",
+      "start": 190.67,
+      "end": 192.23,
+      "text": "Oh no, there's no garbage can!",
+      "person": "Waiter"
+    },
+    {
+      "id": "sub-103",
+      "start": 192.25,
+      "end": 192.89,
+      "text": "What do I do?",
+      "person": "Waiter"
+    },
+    {
+      "id": "sub-104",
+      "start": 193.13,
+      "end": 193.81,
+      "text": "We're in New York!",
+      "person": "Waiter"
+    },
+    {
+      "id": "sub-105",
+      "start": 193.87,
+      "end": 194.67,
+      "text": "Throw it on the ground!",
+      "person": "Waiter"
+    },
+    {
+      "id": "sub-106",
+      "start": 194.83,
+      "end": 195.45,
+      "text": "Be a man!",
+      "person": "Waiter"
+    },
+    {
+      "id": "sub-107",
+      "start": 200.13,
+      "end": 200.71,
+      "text": "Listen, Mr.",
+      "person": "Cowboy"
+    },
+    {
+      "id": "sub-108",
+      "start": 200.85,
+      "end": 204.63,
+      "text": "Ly- I'm getting awful tired of your s- I'm getting tired of your fraud.",
+      "person": "Cowboy"
+    },
+    {
+      "id": "sub-109",
+      "start": 205.31,
+      "end": 207.31,
+      "text": "Now jerk that pistol and go to work.",
+      "person": "Cowboy"
+    },
+    {
+      "id": "sub-110",
+      "start": 209.56,
+      "end": 211.24,
+      "text": "I said throw down, boy!",
+      "person": "Cowboy"
+    },
+    {
+      "id": "sub-111",
+      "start": 213.84,
+      "end": 214.78,
+      "text": "You gonna do something?",
+      "person": "Cowboy"
+    },
+    {
+      "id": "sub-112",
+      "start": 215.54,
+      "end": 217.42,
+      "text": "Or just stand there and cry?",
+      "person": "Cowboy"
+    },
+    {
+      "id": "sub-113",
+      "start": 223.64,
+      "end": 224.72,
+      "text": "Is the alcohol okay?",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-114",
+      "start": 224.86,
+      "end": 226.94,
+      "text": "Hey man, am I driving okay?",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-115",
+      "start": 227.18,
+      "end": 228.1,
+      "text": "You're parked, Paul.",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-116",
+      "start": 228.2,
+      "end": 229.28,
+      "text": "What was in that shit, man?",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-117",
+      "start": 229.34,
+      "end": 230.78,
+      "text": "I never had no booze like that in my life.",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-118",
+      "start": 230.82,
+      "end": 231.74,
+      "text": "Settle down, Paul.",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-119",
+      "start": 231.74,
+      "end": 232.6,
+      "text": "You're freaking out.",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-120",
+      "start": 232.72,
+      "end": 235.22,
+      "text": "I drank a lot of shit before, but I never had no shit like that before.",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-121",
+      "start": 235.34,
+      "end": 236.18,
+      "text": "Drink this, man.",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-122",
+      "start": 236.18,
+      "end": 237.12,
+      "text": "It will mellow you out.",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-123",
+      "start": 237.22,
+      "end": 238.82,
+      "text": "I've been drinking since I was two.",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-124",
+      "start": 239.5,
+      "end": 240.94,
+      "text": "I'll drink this whole bottle.",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-125",
+      "start": 242.08,
+      "end": 243.48,
+      "text": "Oh no, don't drink that!",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-126",
+      "start": 243.58,
+      "end": 243.96,
+      "text": "Huh?",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-127",
+      "start": 244.48,
+      "end": 246.2,
+      "text": "I almost gave you the wrong shit.",
+      "person": "Paul"
+    },
+    {
+      "id": "sub-128",
+      "start": 246.22,
+      "end": 247.36,
+      "text": "But I already drank it!",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-129",
+      "start": 247.4,
+      "end": 249.34,
+      "text": "I hope you don't have any plans for a month.",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-130",
+      "start": 249.34,
+      "end": 250.68,
+      "text": "What are you talking about?",
+      "person": "Buddy"
+    },
+    {
+      "id": "sub-131",
+      "start": 251,
+      "end": 252,
+      "text": "What did I just drink?",
+      "person": "Buddy"
+    }
+  ],
+  "language": "en",
+  "duration": 252.156,
+  "model": "medium",
+  "coverage": {
+    "decoded_frames": 10858,
+    "undecodable_frames": 0,
+    "note": "Full 4:12 video. Multi-scene parody compilation; speaker names assigned from dialogue/scene content (acoustic diarization cannot map voices to characters across scenes). Refine per-line in the editor."
+  }
+}
