@@ -401,6 +401,20 @@ app.get('/thumbs/:name', async (req, res) => {
   catch { res.status(404).end(); }
 });
 
+// TEMP diagnostic: surface why ffmpeg can/can't produce thumbnails in prod.
+app.get('/api/_diag', async (req, res) => {
+  const out = { ffmpegPath, ffprobePath };
+  try { out.ffmpegExists = fs.existsSync(ffmpegPath); out.ffmpegSize = fs.statSync(ffmpegPath).size; } catch (e) { out.ffmpegStatErr = String(e.message); }
+  try { await run(ffmpegPath, ['-version'], null, 8000); out.ffmpegRuns = true; } catch (e) { out.ffmpegRunErr = String(e.message).slice(0, 300); }
+  const v = listVideos()[0];
+  if (v) {
+    out.testVideo = v.url;
+    try { const f = path.join(WORK, 'diag.jpg'); await run(ffmpegPath, ['-ss', '1', '-i', v.url, '-frames:v', '1', '-vf', 'scale=-2:120', '-q:v', '5', '-y', f], null, 20000); out.thumbTest = 'ok ' + (fs.existsSync(f) ? fs.statSync(f).size + 'b' : 'no file'); }
+    catch (e) { out.thumbTestErr = String(e.message).slice(0, 600); }
+  }
+  res.json(out);
+});
+
 app.get('/api/videos', (req, res) => res.json(listVideos()));
 app.get('/api/subtitle-templates', (req, res) => res.json(listTemplates()));
 
