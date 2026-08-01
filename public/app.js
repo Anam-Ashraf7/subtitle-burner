@@ -75,6 +75,9 @@ function card({ cls = '', thumbHtml, cap, sub, onClick }) {
   return el;
 }
 const placeholderThumb = (icon) => `<div class="thumb placeholder">${icon}</div>`;
+// Force a real download (the S3 presigned URL is cross-origin, so <a download> just opens
+// it) — route through the same-origin /download proxy that sets attachment disposition.
+const downloadHref = (url, name) => `/download?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name || 'video.mp4')}`;
 // A thumbnail that fails to load (still generating, or generation failed) falls back to
 // the placeholder icon instead of a broken-image glyph. img error doesn't bubble → capture.
 document.addEventListener('error', (e) => {
@@ -741,7 +744,7 @@ function renderCardEl(r) {
       <div class="render-meta">Generated ${agoStr(r.createdAt)}${r.cost != null ? ` · $${r.cost}` : ''}${r.trim ? ` · first ${r.trim}s` : ''} · link expires in ${expiryStr(r.expiresAt)}</div>
       <div class="render-actions">
         <button class="mini open">▶ Open in studio</button>
-        <a class="mini" href="${escapeHtml(r.url)}" download target="_blank" rel="noopener">⬇ Download</a>
+        <a class="mini" href="${escapeHtml(downloadHref(r.url, (r.videoName || 'render') + '.mp4'))}">⬇ Download</a>
         <button class="mini del">✕ Remove</button>
       </div>
     </div>`;
@@ -1208,9 +1211,10 @@ async function l3Poll() {
       if (s.video_url) recordRender(saved, s); // keep it in "My Renders" while the link is valid
       l3SetStage('upload');
       const cost = `$${s.cost_usd ?? '—'}, ${Math.round((s.elapsed_seconds || 0) / 60)}m`;
-      setMsg('#level3Msg', `Done! (${cost}) — link valid 7 days.`, 'ok');
-      const r = $('#l3Result'); r.href = s.video_url; r.hidden = false; $('#l3Dismiss').hidden = false; $('#level3Btn').disabled = false;
-      updateL3Banner(`Done! (${cost})`, s.video_url);
+      const dl = downloadHref(s.video_url, (state.video && state.video.name ? state.video.name : 'faceswap') + '.mp4');
+      setMsg('#level3Msg', `Done! (${cost}) — link valid 7 days.${s.job_id ? ` · job ${s.job_id}` : ''}`, 'ok');
+      const r = $('#l3Result'); r.href = dl; r.hidden = false; $('#l3Dismiss').hidden = false; $('#level3Btn').disabled = false;
+      updateL3Banner(`Done! (${cost})`, dl);
       // Swap the preview to the new video when we're in the studio for this job's video.
       if (s.video_url && document.body.classList.contains('studio-open') && saved.videoId === (state.video && state.video.id)) {
         state.resultUrl = s.video_url;
@@ -1302,7 +1306,7 @@ $('#l3Dismiss').addEventListener('click', clearL3);
   // Finished runs just show a dismissible banner — no polling, no panel takeover.
   if (saved.status === 'done') {
     if (saved.video_url) recordRender(saved, { video_url: saved.video_url, cost_usd: saved.cost, elapsed_seconds: saved.elapsed }); // ensure it's in My Renders
-    updateL3Banner('Done!', saved.video_url || null); return;
+    updateL3Banner('Done!', saved.video_url ? downloadHref(saved.video_url, (saved.videoName || 'faceswap') + '.mp4') : null); return;
   }
   if (saved.status === 'failed') { updateL3Banner('Failed', null); return; }
   // Stale/stuck job (past the 90-min cap) — drop it silently instead of resurrecting.

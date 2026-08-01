@@ -426,6 +426,25 @@ app.get('/thumbs/:name', async (req, res) => {
   catch { res.status(404).end(); }
 });
 
+// Force-download a result video: the S3 presigned URL is cross-origin, so an <a download>
+// just opens it. We stream it same-origin with an attachment disposition. Restricted to
+// S3 hosts to avoid being an open proxy (SSRF).
+app.get('/download', async (req, res) => {
+  const url = String(req.query.url || '');
+  let host;
+  try { host = new URL(url).hostname; } catch { return res.status(400).end('bad url'); }
+  if (!/^https:\/\//i.test(url) || !/\.amazonaws\.com$/i.test(host)) return res.status(400).end('only S3 URLs allowed');
+  const name = String(req.query.name || 'video.mp4').replace(/[^\w.\-]+/g, '_') || 'video.mp4';
+  try {
+    const r = await fetch(url);
+    if (!r.ok || !r.body) return res.status(502).end('fetch failed (' + r.status + ')');
+    res.setHeader('Content-Type', r.headers.get('content-type') || 'video/mp4');
+    const len = r.headers.get('content-length'); if (len) res.setHeader('Content-Length', len);
+    res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+    await pipeline(Readable.fromWeb(r.body), res);
+  } catch (e) { if (!res.headersSent) res.status(502).end(String(e.message || e)); }
+});
+
 app.get('/api/videos', (req, res) => res.json(listVideos()));
 app.get('/api/subtitle-templates', (req, res) => res.json(listTemplates()));
 
