@@ -401,17 +401,31 @@ app.get('/thumbs/:name', async (req, res) => {
   catch { res.status(404).end(); }
 });
 
-// TEMP diagnostic: surface why ffmpeg can/can't produce thumbnails in prod.
+// TEMP diagnostic: isolate why ffmpeg can/can't produce thumbnails in prod.
+function spawnDiag(bin, args, timeoutMs) {
+  return new Promise((resolve) => {
+    const p = spawn(bin, args);
+    let err = '';
+    const t = setTimeout(() => { try { p.kill('SIGKILL'); } catch { /* ignore */ } }, timeoutMs);
+    p.stderr.on('data', (d) => (err += d));
+    p.on('close', (code, signal) => { clearTimeout(t); resolve({ code, signal, errTail: err.slice(-350) }); });
+    p.on('error', (e) => { clearTimeout(t); resolve({ spawnError: e.message }); });
+  });
+}
 app.get('/api/_diag', async (req, res) => {
-  const out = { ffmpegPath, ffprobePath };
-  try { out.ffmpegExists = fs.existsSync(ffmpegPath); out.ffmpegSize = fs.statSync(ffmpegPath).size; } catch (e) { out.ffmpegStatErr = String(e.message); }
-  try { await run(ffmpegPath, ['-version'], null, 8000); out.ffmpegRuns = true; } catch (e) { out.ffmpegRunErr = String(e.message).slice(0, 300); }
-  const v = listVideos()[0];
-  if (v) {
-    out.testVideo = v.url;
-    try { const f = path.join(WORK, 'diag.jpg'); await run(ffmpegPath, ['-ss', '1', '-i', v.url, '-frames:v', '1', '-vf', 'scale=-2:120', '-q:v', '5', '-y', f], null, 20000); out.thumbTest = 'ok ' + (fs.existsSync(f) ? fs.statSync(f).size + 'b' : 'no file'); }
-    catch (e) { out.thumbTestErr = String(e.message).slice(-700); }
-  }
+  const out = { ffmpegPath };
+  // A: ffmpeg encoding a local test pattern — no network at all.
+  const lf = path.join(WORK, 'testsrc.jpg');
+  out.localEncode = await spawnDiag(ffmpegPath, ['-f', 'lavfi', '-i', 'testsrc=size=64x64:rate=1:duration=1', '-frames:v', '1', '-y', lf], 15000);
+  out.localFileBytes = fs.existsSync(lf) ? fs.statSync(lf).size : 0;
+  // B: can NODE reach the S3 object?
+  const url = (listVideos()[0] || {}).url; out.url = url;
+  try { const r = await fetch(url, { headers: { Range: 'bytes=0-2000' } }); const b = await r.arrayBuffer(); out.nodeFetch = { status: r.status, bytes: b.byteLength }; }
+  catch (e) { out.nodeFetchErr = String(e.message); }
+  // C: ffmpeg reading the S3 URL — capture exit code + signal.
+  const sf = path.join(WORK, 'diag_s3.jpg');
+  out.s3Thumb = await spawnDiag(ffmpegPath, ['-ss', '1', '-i', url, '-frames:v', '1', '-vf', 'scale=-2:120', '-q:v', '5', '-y', sf], 25000);
+  out.s3ThumbBytes = fs.existsSync(sf) ? fs.statSync(sf).size : 0;
   res.json(out);
 });
 
