@@ -25,24 +25,25 @@
   <main id="rows">
     <div class="row">
       <h2 class="row-title"><span class="lv">Level 0</span> Intro &amp; Outro only
+        <span class="feats"><span class="feat">Intro &amp; Outro</span></span>
       </h2>
       <div class="rail" id="railLevel0"><div class="loading">Loading…</div></div>
     </div>
     <div class="row">
       <h2 class="row-title"><span class="lv">Level 1</span> Subtitles only (existing audio)
-        <span class="feats"><span class="feat">+ Intro &amp; Outro</span></span>
+        <span class="feats"><span class="feat">Intro &amp; Outro</span><span class="feat">Subtitles</span></span>
       </h2>
       <div class="rail" id="railLevel1"></div>
     </div>
     <div class="row">
       <h2 class="row-title"><span class="lv">Level 2</span> Voiceover and Subtitles
-        <span class="feats"><span class="feat">+ Intro &amp; Outro</span></span>
+        <span class="feats"><span class="feat">Intro &amp; Outro</span><span class="feat">Subtitles</span><span class="feat">Voiceover</span></span>
       </h2>
       <div class="rail" id="railLevel2"></div>
     </div>
     <div class="row">
       <h2 class="row-title"><span class="lv">Level 3</span> Face Swap, Lip Sync and Voiceover
-        <span class="feats"><span class="feat">+ Intro &amp; Outro</span><span class="feat">+ Subtitles</span></span>
+        <span class="feats"><span class="feat">Intro &amp; Outro</span><span class="feat">Subtitles</span><span class="feat">Voiceover</span><span class="feat">Face Swap</span><span class="feat">Lip Sync</span></span>
       </h2>
       <div class="rail" id="railLevel3"></div>
     </div>
@@ -147,6 +148,16 @@
     <!-- RIGHT: guided step-by-step -->
     <div class="stepper" id="stepper">
 
+      <!-- Global commit bar — visible from every step -->
+      <div class="applybar" id="applybarGlobal">
+        <span class="apply-dot" aria-hidden="true"></span>
+        <span class="apply-text">
+          <b id="applyState">All changes applied</b>
+          <small id="applyHint">Your edits are saved</small>
+        </span>
+        <button id="applyBtn" class="btn-apply" disabled><span class="ba-ico">✓</span> Apply &amp; save</button>
+      </div>
+
       <!-- STEP · Script & timing -->
       <section class="step" id="step-script" data-step="script">
         <button type="button" class="step-head">
@@ -156,14 +167,6 @@
         </button>
         <div class="step-body">
           <div class="editor-head">
-            <div class="applybar">
-              <span class="apply-dot" aria-hidden="true"></span>
-              <span class="apply-text">
-                <b id="applyState">All changes applied</b>
-                <small id="applyHint">Your edits are ready to export</small>
-              </span>
-              <button id="applyBtn" class="btn-apply" disabled><span class="ba-ico">✓</span> Apply &amp; save</button>
-            </div>
             <div class="tabs">
               <button class="tab active" data-tab="intro">Intro</button>
               <button class="tab" data-tab="subs">Subtitles</button>
@@ -187,7 +190,13 @@
           <span class="step-chev" aria-hidden="true">▾</span>
         </button>
         <div class="step-body">
-          <div class="step-scroll"><div id="voiceChars" class="charlist"></div></div>
+          <div class="step-scroll">
+            <div id="voiceChars" class="charlist"></div>
+            <div class="voice-preview">
+              <button type="button" id="voiceGenBtn">🔊 Generate voiceover</button>
+              <div id="voiceStatus" class="msg"></div>
+            </div>
+          </div>
           <div class="step-cta"><button type="button" class="step-next">Next →</button></div>
         </div>
       </section>

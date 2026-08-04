@@ -231,7 +231,6 @@ function applyXlsxInStudio(cues, label) {
   updateTabCounts(); updateLevelUI(); renderCharacterBoxes(); updateSubOverlay();
   switchTab(state.subs.length ? 'subs' : 'intro');
   markDirty();
-  maybeGenerateVoice();
   alert(`Loaded ${state.subs.length} subtitle line(s) from “${label}”. Review them, then click “Apply & save” to commit.`);
 }
 
@@ -391,8 +390,7 @@ function openStudio() {
   renderCharacterBoxes();
   markClean();
   updateSubOverlay();
-  clearVoiceAudio();
-  maybeGenerateVoice(); // build the Level 2 voice track up front so it's previewable
+  clearVoiceAudio(); // voiceover is generated on demand via the Generate voiceover button
   // Opened from My Renders → show the generated video straight away.
   if (state.pinnedRender && state.resultUrl) setPreviewSource('result');
   state.pinnedRender = null; // one-shot: normal reopens default to the original
@@ -478,20 +476,39 @@ function autoTrimFromSubs() {
 // studio opens, then hold every replacement line to ±10% of the original at its index.
 const LEN_TOL = 0.10;
 function captureBaseline() {
+  // Keep the original lines WITH their timings, so a new line is matched to whatever
+  // original(s) share its time window — not to its position in the list.
   state.baseline = (state.subs || []).slice().sort((a, b) => a.start - b.start)
-    .map((c) => ({ len: (c.text || '').trim().length }));
+    .map((c) => ({ start: +c.start, end: +c.end, len: (c.text || '').trim().length }));
 }
-// Allowed [min,max] length for the sub at slot `index`, or null if no original there.
-function lenBounds(index) {
-  const b = state.baseline && state.baseline[index];
-  if (!b || !b.len) return null;
-  return { base: b.len, min: Math.round(b.len * (1 - LEN_TOL)), max: Math.round(b.len * (1 + LEN_TOL)) };
+// Character budget for a line = total length of the original lines that live in its time
+// window. Combining two originals into one line inherits their SUM; splitting one original
+// across two lines gives each a time-proportional share.
+function lenBudget(line) {
+  const base = state.baseline || [];
+  const s = +line.start, e = +line.end;
+  if (!base.length || !(e > s)) return null;
+  let sum = 0, matched = false;
+  for (const b of base) { const mid = (b.start + b.end) / 2; if (mid >= s && mid < e) { sum += b.len; matched = true; } }
+  if (matched) return sum;
+  // No original's midpoint sits inside this line (it splits/sits within one original):
+  // give it a time-proportional share of the original it overlaps most.
+  let best = null, bestOv = 0;
+  for (const b of base) { const ov = Math.min(e, b.end) - Math.max(s, b.start); if (ov > bestOv) { bestOv = ov; best = b; } }
+  if (best && best.end > best.start) return Math.max(1, Math.round(best.len * ((e - s) / (best.end - best.start))));
+  return null;
 }
-// Subs (in the visible/trim window) whose length falls outside their slot's ±10% band.
+// Allowed [min,max] length for a subtitle line, or null when there's no original to match.
+function lenBounds(line) {
+  const base = lenBudget(line);
+  if (!base) return null;
+  return { base, min: Math.round(base * (1 - LEN_TOL)), max: Math.round(base * (1 + LEN_TOL)) };
+}
+// Subs (in the visible/trim window) whose length falls outside their ±10% band.
 function lengthViolations() {
   const out = [];
-  visibleSubs().forEach((c, i) => {
-    const b = lenBounds(i); if (!b) return;
+  visibleSubs().forEach((c) => {
+    const b = lenBounds(c); if (!b) return;
     const n = (c.text || '').trim().length;
     if (n < b.min || n > b.max) out.push({ text: c.text || '', len: n, min: b.min, max: b.max });
   });
@@ -933,8 +950,9 @@ function renderPane(kind) {
     const div = document.createElement('div');
     div.className = 'cue' + (idx === 0 ? ' first' : '');
     div.dataset.id = c.id;
-    // Hold every subtitle to ±10% of the original line's length at this slot.
-    const bounds = isScreen ? null : lenBounds(idx);
+    // Hold every subtitle to ±10% of the original length in its time window
+    // (a merged line inherits the combined budget of the originals it spans).
+    const bounds = isScreen ? null : lenBounds(c);
     const color = isScreen ? 'var(--red)' : speakerColor(c.person || kind);
     const avatarTxt = isScreen ? String(idx + 1) : initials(c.person || kind);
     const nameTxt = isScreen ? `${cap(kind)} screen ${idx + 1}` : (c.person || 'Speaker');
@@ -1079,9 +1097,10 @@ $('#applyBtn').addEventListener('click', async () => {
     return; // stays dirty — not applied
   }
   const chars = characters().length;
-  markClean(`${state.subs.length} lines · ${chars} character${chars === 1 ? '' : 's'} · ready to export`);
+  markClean(`${state.subs.length} lines · ${chars} character${chars === 1 ? '' : 's'} · saved`);
   setMsg('#exportMsg', '', '');
-  await maybeGenerateVoice(); // Level 2: build the voice track so the user can preview it
+  // Editing changed the voices/subs — the generated audio is now stale until re-generated.
+  if (state.selected['2']) { clearVoiceAudio(); setMsg('#voiceStatus', 'Changes saved — click “Generate voiceover” to (re)create the audio.', ''); }
 });
 
 // ===================== LEVEL 2 VOICE PREVIEW =====================
@@ -1118,10 +1137,10 @@ async function maybeGenerateVoice() {
   const wantVoice = !!state.selected['2'];
   if (!wantVoice || !state.subs.length || !state.video) { clearVoiceAudio(); return; }
   const missing = characters().filter((ch) => !isGroup(ch.name) && !(state.voices[ch.id] && state.voices[ch.id].prompt.trim()));
-  if (missing.length) { clearVoiceAudio(); $('#applyHint').textContent = `Add a voice for: ${missing.map((c) => c.name).join(', ')}`; return; }
+  if (missing.length) { clearVoiceAudio(); setMsg('#voiceStatus', `Describe a voice for: ${missing.map((c) => c.name).join(', ')}`, 'err'); return; }
   const sig = voiceSignature();
-  if (sig === state.voiceSig && state.voiceUrl) { $('#applyHint').textContent = '🔊 Voiceover ready · press ▶ to preview'; return; }
-  $('#applyHint').textContent = 'Generating voiceover…';
+  if (sig === state.voiceSig && state.voiceUrl) { setMsg('#voiceStatus', '🔊 Voiceover ready · press ▶ to preview', 'ok'); return; }
+  setMsg('#voiceStatus', 'Generating voiceover…', '');
   try {
     const r = await fetch('/api/voiceover', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1133,9 +1152,21 @@ async function maybeGenerateVoice() {
     applyVoiceTimeline(j.timeline); // align captions to the spoken audio
     voiceAudio.src = j.presigned_url; voiceAudio.load(); video.muted = true;
     if (!video.paused && !previewing) { voiceAudio.currentTime = video.currentTime; voiceAudio.play().catch(() => {}); }
-    $('#applyHint').textContent = `🔊 Voiceover ready · press ▶ to preview (${(+j.duration_seconds || 0).toFixed(1)}s)`;
-  } catch (e) { clearVoiceAudio(); $('#applyHint').textContent = 'Voiceover failed: ' + e.message; }
+    setMsg('#voiceStatus', `🔊 Voiceover ready · press ▶ to preview (${(+j.duration_seconds || 0).toFixed(1)}s)`, 'ok');
+  } catch (e) { clearVoiceAudio(); setMsg('#voiceStatus', 'Voiceover failed: ' + e.message, 'err'); }
 }
+
+// Explicit "Generate voiceover" — same pipeline as maybeGenerateVoice (call the API,
+// then swap the video's audio for the generated track), with status shown in this step.
+$('#voiceGenBtn')?.addEventListener('click', async () => {
+  const btn = $('#voiceGenBtn');
+  const missing = characters().filter((ch) => !isGroup(ch.name) && !(state.voices[ch.id] && state.voices[ch.id].prompt.trim()));
+  if (missing.length) { setMsg('#voiceStatus', `Describe a voice for: ${missing.map((c) => c.name).join(', ')}`, 'err'); return; }
+  btn.disabled = true; setMsg('#voiceStatus', 'Generating voiceover from the API…', '');
+  await maybeGenerateVoice();
+  btn.disabled = false;
+  setMsg('#voiceStatus', state.voiceUrl ? '🔊 Voiceover ready — it replaces the video audio. Press ▶ on the preview to hear it.' : 'Voiceover failed — check the descriptions and try again.', state.voiceUrl ? 'ok' : 'err');
+});
 
 // Lock the generated voice track to the video during normal playback / scrubbing.
 video.addEventListener('play', () => { if (state.voiceUrl && !previewing) { voiceAudio.currentTime = video.currentTime; voiceAudio.play().catch(() => {}); } });

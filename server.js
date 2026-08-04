@@ -4,7 +4,7 @@ import XLSX from 'xlsx';
 import ffmpegPath from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,7 +57,85 @@ async function localInput(url) {
 }
 
 const app = express();
+app.set('trust proxy', 1); // behind Render's proxy — needed for correct https detection
 app.use(express.json({ limit: '30mb' })); // face images arrive as base64 data URLs
+
+// ---------- password gate (shared password + signed cookie) ----------
+const SITE_PASSWORD = process.env.SITE_PASSWORD || '';
+const AUTH_SECRET = process.env.SESSION_SECRET || SITE_PASSWORD || 'sb-dev-secret';
+const AUTH_COOKIE = 'sb_auth';
+// Cookie value proves "knew the password"; it changes if the password changes, so old
+// cookies stop working. Stateless — survives restarts, no session store needed.
+const AUTH_TOKEN = SITE_PASSWORD ? createHmac('sha256', AUTH_SECRET).update('sb-auth-v1|' + SITE_PASSWORD).digest('hex') : '';
+if (!SITE_PASSWORD) console.warn('[auth] SITE_PASSWORD not set — the site is NOT password protected.');
+
+function safeEqual(a, b) { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && timingSafeEqual(x, y); }
+function parseCookies(req) {
+  const out = {}; const raw = req.headers.cookie; if (!raw) return out;
+  for (const part of raw.split(';')) { const i = part.indexOf('='); if (i < 0) continue; out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim()); }
+  return out;
+}
+const isAuthed = (req) => !SITE_PASSWORD || safeEqual(parseCookies(req)[AUTH_COOKIE] || '', AUTH_TOKEN);
+const wantsHtml = (req) => (req.headers.accept || '').includes('text/html');
+
+const LOGIN_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>AI Video Studio — Sign in</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(1200px 600px at 50% -10%, #2a0d10, #0c0c0c 60%); color: #fff; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .card { width: min(92vw, 380px); background: #171717; border: 1px solid #333; border-radius: 16px; padding: 32px 28px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 900; font-size: 24px; letter-spacing: .04em; color: #e50914; margin-bottom: 20px; }
+  .brand .mk { font-size: 15px; }
+  h1 { font-size: 15px; font-weight: 700; margin: 0 0 4px; color: #fff; }
+  p { margin: 0 0 18px; font-size: 13px; color: #b3b3b3; }
+  label { display: block; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #b3b3b3; margin-bottom: 8px; }
+  input { width: 100%; background: #0f0f0f; color: #fff; border: 1px solid #333; border-radius: 10px; padding: 13px 14px; font-size: 15px; }
+  input:focus { outline: none; border-color: #e50914; box-shadow: 0 0 0 3px rgba(229,9,20,.22); }
+  button { width: 100%; margin-top: 16px; background: #e50914; color: #fff; border: 0; border-radius: 10px; padding: 14px; font-size: 15px; font-weight: 800; cursor: pointer; }
+  button:hover { background: #f6121d; }
+  button:disabled { opacity: .6; cursor: default; }
+  .err { min-height: 18px; margin-top: 10px; font-size: 13px; color: #ff8a8a; }
+</style></head><body>
+  <form class="card" id="f">
+    <div class="brand"><span class="mk">▶</span> AI VIDEO STUDIO</div>
+    <h1>Enter password to continue</h1>
+    <p>This studio is private.</p>
+    <label for="pw">Password</label>
+    <input id="pw" name="password" type="password" autocomplete="current-password" autofocus required />
+    <button id="btn" type="submit">Unlock</button>
+    <div class="err" id="err"></div>
+  </form>
+  <script>
+    const f = document.getElementById('f'), pw = document.getElementById('pw'), err = document.getElementById('err'), btn = document.getElementById('btn');
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault(); err.textContent = ''; btn.disabled = true;
+      try {
+        const r = await fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw.value }) });
+        if (r.ok) { location.href = '/'; return; }
+        err.textContent = 'Incorrect password.';
+      } catch (_) { err.textContent = 'Something went wrong — try again.'; }
+      btn.disabled = false; pw.select();
+    });
+  </script>
+</body></html>`;
+
+app.get('/login', (req, res) => { if (isAuthed(req)) return res.redirect('/'); res.type('html').send(LOGIN_HTML); });
+app.post('/login', (req, res) => {
+  const pw = (req.body && req.body.password) || '';
+  if (!SITE_PASSWORD || !safeEqual(pw, SITE_PASSWORD)) return res.status(401).json({ error: 'Incorrect password' });
+  const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  res.setHeader('Set-Cookie', `${AUTH_COOKIE}=${AUTH_TOKEN}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}${secure ? '; Secure' : ''}`);
+  res.json({ ok: true });
+});
+app.get('/logout', (req, res) => { res.setHeader('Set-Cookie', `${AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`); res.redirect('/login'); });
+
+// Everything below this line requires a valid session.
+app.use((req, res, next) => {
+  if (isAuthed(req)) return next();
+  if (wantsHtml(req)) return res.redirect('/login');
+  res.status(401).json({ error: 'Authentication required' });
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/fonts', express.static(path.join(__dirname, 'assets', 'fonts'))); // @font-face for WYSIWYG preview
 app.use('/thumbs', express.static(THUMBS_DIR)); // static poster frames for template cards

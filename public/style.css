@@ -200,6 +200,8 @@ select.tin { cursor: pointer; }
 /* The whole step list is a fixed-height panel that fits the screen: collapsed steps
    keep their height, the open step flexes to fill the rest and scrolls inside. */
 .stepper { min-width: 0; display: flex; flex-direction: column; gap: 12px; position: sticky; top: 84px; max-height: calc(100vh - 104px); overflow-y: auto; }
+/* Apply & save is global (not inside a step) so it's reachable from any step. */
+#applybarGlobal { flex: none; position: sticky; top: 0; z-index: 8; }
 .step { flex: none; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(180deg, #1c1c1c, #171717); overflow: hidden; transition: border-color .2s, box-shadow .2s; }
 .step.active { flex: 1 1 auto; min-height: 0; border-color: rgba(229,9,20,.5); box-shadow: 0 10px 30px rgba(0,0,0,.35); display: flex; flex-direction: column; }
 .step-head { width: 100%; display: flex; align-items: center; gap: 13px; padding: 15px 16px; background: transparent; text-align: left; border-radius: 0; }
@@ -311,6 +313,10 @@ select.tin { cursor: pointer; }
 
 /* --- Level 2 / 3 character boxes --- */
 .charlist { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.voice-preview { display: flex; flex-direction: column; gap: 8px; }
+#voiceGenBtn { align-self: flex-start; background: rgba(255,255,255,.06); color: #fff; border: 1px solid var(--line); padding: 12px 20px; border-radius: 10px; font-weight: 800; font-size: 14px; transition: background .15s, border-color .15s; }
+#voiceGenBtn:hover:not(:disabled) { background: rgba(255,255,255,.12); border-color: var(--red); }
+#voiceGenBtn:disabled { opacity: .55; cursor: default; }
 .charrow { display: flex; gap: 12px; align-items: flex-start; }
 /* face rows are single-line — centre the photo against the name + controls */
 .charrow.face { align-items: center; background: #171717; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
