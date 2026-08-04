@@ -499,10 +499,15 @@ function lenBudget(line) {
   return null;
 }
 // Allowed [min,max] length for a subtitle line, or null when there's no original to match.
+// The band is ±10%, applied to the offset (not the endpoints) with two rules so short
+// lines still get room: if 10% is under 1 char, allow ±1; otherwise round the offset to a
+// whole character (a .5-or-greater decimal rounds up to the next one).
 function lenBounds(line) {
   const base = lenBudget(line);
   if (!base) return null;
-  return { base, min: Math.round(base * (1 - LEN_TOL)), max: Math.round(base * (1 + LEN_TOL)) };
+  const raw = base * LEN_TOL;
+  const offset = raw < 1 ? 1 : Math.round(raw);
+  return { base, min: Math.max(1, base - offset), max: base + offset };
 }
 // Subs (in the visible/trim window) whose length falls outside their ±10% band.
 function lengthViolations() {
