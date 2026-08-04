@@ -691,6 +691,20 @@ function renderFaceChars(chars, sel = '#faceChars') {
   });
 }
 
+// Push any face that has an image but isn't on S3 yet (paste-URL faces, or ones whose
+// initial upload failed). Called on Apply & save so a saved Level 3 always has S3 faces.
+async function ensureFacesUploaded() {
+  const pending = Object.entries(state.faces).filter(([, f]) => f && f.dataUrl && !f.uploaded);
+  if (!pending.length) return;
+  await Promise.all(pending.map(async ([id, f]) => {
+    try {
+      const j = await (await fetch('/api/upload-face', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, dataUrl: f.dataUrl }) })).json();
+      if (j.url) { f.url = j.url; f.uploaded = true; }
+    } catch { /* falls back to upload at generate time */ }
+  }));
+  renderFaceChars(activeCharacters()); // refresh the "✓ uploaded to S3" labels
+}
+
 // ===================== MODE BADGE (studio) =====================
 function updateLevelUI() {
   deriveLevel();
@@ -1092,11 +1106,18 @@ $('#applyBtn').addEventListener('click', async () => {
   const bad = lengthViolations();
   if (bad.length) {
     const eg = bad.slice(0, 3).map((v) => `"${v.text.slice(0, 24)}" ${v.len}→need ${v.min}-${v.max}`).join('; ');
-    switchTab('subs');
+    // Take the user to the offending lines (which live in a collapsed step) and say why,
+    // right on the always-visible bar — otherwise clicking Apply seems to do nothing.
+    setStep('script'); switchTab('subs');
+    $('#applyState').textContent = "Can't save yet";
+    $('#applyHint').textContent = `${bad.length} line(s) over the ±10% length limit — fix them below.`;
     setMsg('#exportMsg', `${bad.length} subtitle(s) outside ±10% of the original length: ${eg}${bad.length > 3 ? '…' : ''}. Fix them to apply.`, 'err');
     return; // stays dirty — not applied
   }
   const chars = characters().length;
+  // Make sure every face is on S3 before we call this saved (paste-URL or a failed
+  // initial upload gets pushed now, too).
+  if (state.selected['3']) await ensureFacesUploaded();
   markClean(`${state.subs.length} lines · ${chars} character${chars === 1 ? '' : 's'} · saved`);
   setMsg('#exportMsg', '', '');
   // Editing changed the voices/subs — the generated audio is now stale until re-generated.
