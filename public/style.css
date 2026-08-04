@@ -220,6 +220,9 @@ select.tin { cursor: pointer; }
 .step-head { flex: none; }
 .step.active .step-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 .step-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 4px; margin-right: -4px; display: flex; flex-direction: column; gap: 14px; }
+/* List-heavy steps get a comfortable floor so a few rows are always visible even
+   on short windows (they still grow to fill taller screens). */
+#step-script .step-scroll, #step-faces .step-scroll, #step-voices .step-scroll { min-height: 520px; }
 .step-cta { flex: none; display: flex; justify-content: flex-end; margin-top: 14px; }
 .step-next { background: var(--red); color: #fff; padding: 10px 22px; border-radius: 10px; font-weight: 800; font-size: 13px; box-shadow: 0 5px 16px rgba(229,9,20,.32); transition: background .15s, transform .1s; }
 .step-next:hover { background: var(--red-hi); }
