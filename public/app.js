@@ -1,7 +1,7 @@
 const $ = (s) => document.querySelector(s);
 const state = { selected: {}, video: null, templateName: null, templateType: '', placeholders: [], rawSubs: [], intro: [], subs: [], outro: [], level: 0, introOutro: false, tplIntro: [], tplOutro: [],
   subStyle: { font: 'dejavu', sizePct: 5.5, color: '#ffffff', bg: 'box', bgColor: '#000000' },
-  voices: {}, faces: {}, l3Trim: { on: false, seconds: 27 }, resultUrl: null, resultSubs: null, showingResult: false };
+  voices: {}, faces: {}, l3Trim: { on: false, start: 0, end: 27 }, resultUrl: null, resultSubs: null, showingResult: false };
 let cueSeq = 0;
 
 // Preview styling that mirrors the server's libass output (WYSIWYG)
@@ -124,13 +124,14 @@ async function selectTemplate(t, el) {
   finally { if (el) { delete el.dataset.loading; el.classList.remove('loading-card'); } }
 }
 
-// Levels are independent: one pick per level row, any number of levels at once.
+// Single-select: each level already carries over the lower ones, so only one level
+// can be chosen at a time. Picking any card clears every other selection.
 function applyCues(cues, name, el) {
   const type = String(cues.type ?? '');
   const already = el && el.classList.contains('selected');
-  if (el) el.closest('.rail')?.querySelectorAll('.card').forEach((c) => c.classList.remove('selected'));
-  if (already) delete state.selected[type];
-  else {
+  document.querySelectorAll('.rail .card.selected').forEach((c) => c.classList.remove('selected'));
+  state.selected = {};
+  if (!already) {
     if (el) el.classList.add('selected');
     state.selected[type] = { ...cues, type, name };
   }
@@ -225,7 +226,7 @@ function applyXlsxInStudio(cues, label) {
   state.placeholders = [...new Set([...(state.placeholders || []), ...(cues.placeholders || [])])];
   deriveLevel();
   autoTrimFromSubs(); // re-default the trim to the new subtitles' end
-  $('#substyleBox').style.display = state.video && state.level >= 1 ? '' : 'none';
+  $('#step-style').hidden = !(state.video && state.level >= 1);
   renderPane('intro'); renderPane('subs'); renderPane('outro');
   updateTabCounts(); updateLevelUI(); renderCharacterBoxes(); updateSubOverlay();
   switchTab(state.subs.length ? 'subs' : 'intro');
@@ -241,7 +242,7 @@ function activeLayers() {
   return parts;
 }
 function modeName() { const p = activeLayers(); return p.length ? p.join(' + ') : 'Video only'; }
-const LEVEL_NAME = { '0': 'Intro & Outro', '1': 'Subtitles', '2': 'Voiceover', '3': 'Manipulate heads' };
+const LEVEL_NAME = { '0': 'Intro & Outro', '1': 'Subtitles', '2': 'Voiceover', '3': 'Face swap' };
 function updateSelbar() {
   const info = document.querySelector('#selbar .selbar-info');
   const picks = Object.keys(state.selected).sort();
@@ -291,7 +292,7 @@ function openForm() {
   if (!state.video) return;
   fillOnce();
   $('#formTitle').textContent = state.templateName || state.video.name;
-  const typeLabel = { '0': 'No text', '1': 'Subtitles', '2': 'Voiceover', '3': 'Head swap' }[state.templateType];
+  const typeLabel = { '0': 'Intro & Outro', '1': 'Subtitles', '2': 'Voiceover', '3': 'Face swap' }[state.templateType];
   $('#formType').textContent = typeLabel || ''; $('#formType').style.display = typeLabel ? '' : 'none';
   // hints removed — every placeholder now has its own field below
   ['map-fullname', 'map-position', 'map-city'].forEach((id) => ($('#' + id).textContent = ''));
@@ -302,17 +303,15 @@ function openForm() {
     dyn.insertAdjacentHTML('beforeend', '<div class="dyn-head">Script placeholders</div><div class="dyn-note">A field for every ' + '[placeholder]' + ' in the script. Ones matching the fields above pre-fill automatically — edit any of them freely.</div>');
     toks.forEach((t) => {
       const wrap = document.createElement('div'); wrap.className = 'fld';
-      wrap.innerHTML = `<span class="fld-label"><i>◆</i> ${escapeHtml(prettyToken(t))} <span class="tok">[${escapeHtml(t)}]</span></span><input class="tin dyn-in" data-token="${t}" type="text" placeholder="Enter ${escapeHtml(prettyToken(t)).toLowerCase()}" />`;
+      const fid = 'dyn-' + t;
+      wrap.innerHTML = `<label class="fld-label" for="${fid}"><i>◆</i> ${escapeHtml(prettyToken(t))} <span class="tok">[${escapeHtml(t)}]</span></label><input id="${fid}" class="tin dyn-in" data-token="${t}" type="text" placeholder="Enter ${escapeHtml(prettyToken(t)).toLowerCase()}" />`;
       const inp = wrap.querySelector('input');
       inp.addEventListener('input', () => { inp.dataset.dirty = '1'; });
       dyn.appendChild(wrap);
     });
   }
-  // Level 3 picked → collect a face per character right here in the form
-  const chars = characters();
-  const wantFaces = !!state.selected['3'] && chars.length > 0;
-  $('#formFaceWrap').hidden = !wantFaces;
-  if (wantFaces) renderFaceChars(chars, '#formFaces');
+  // Level 3 faces are collected in the studio (Face swap & lip sync box), not in this form
+  $('#formFaceWrap').hidden = true;
 
   syncStandardToTokens(); // pre-fill overlapping tokens from any values already typed
   $('#browseView').hidden = true; $('#selbar').hidden = true; $('#formView').hidden = false;
@@ -347,6 +346,7 @@ $('#genForm').addEventListener('submit', (e) => {
 
 function openStudio() {
   document.body.classList.add('studio-open');
+  activeStep = 'script'; reachedStep = 'script'; // always start the guided flow at step 1
   // Restore a render for this video so a reload/reopen never loses the generated video —
   // it stays available via the preview toggle. A pinned render (opened from My Renders)
   // takes precedence and is shown by default; otherwise default to the original.
@@ -361,7 +361,7 @@ function openStudio() {
   document.querySelector('.stage').style.display = hasVideo ? '' : 'none';
   document.querySelector('.preview-controls').style.display = hasVideo ? '' : 'none';
   $('#exportBtn').disabled = !hasVideo;
-  $('#substyleBox').style.display = hasVideo && state.level >= 1 ? '' : 'none';
+  $('#step-style').hidden = !(hasVideo && state.level >= 1);
   $('#browseView').hidden = true;
   $('#selbar').hidden = true;
   $('#studio').hidden = false;
@@ -449,23 +449,27 @@ function charFirstStart(id) {
   for (const c of state.subs) if (slug((c.person || '').trim()) === id && +c.start < min) min = +c.start;
   return min;
 }
+// A character is "in the clip" when any of its lines overlaps the trim window.
+function charInWindow(id) {
+  return state.subs.some((c) => slug((c.person || '').trim()) === id && +c.end > state.l3Trim.start && +c.start < state.l3Trim.end);
+}
 function activeCharacters() {
   const all = characters();
   if (!state.l3Trim.on) return all;
-  return all.filter((ch) => charFirstStart(ch.id) < state.l3Trim.seconds);
+  return all.filter((ch) => charInWindow(ch.id));
 }
 
-// When a subtitle set + a Level 3 video are chosen, default the trim to the end of the
-// subtitles: round the last line's end up to a whole second and turn trim on. Keeps the
-// face-swap clip only as long as the dialogue (e.g. last line ends 14.4s → trim 15s).
+// When a subtitle set + a Level 3 video are chosen, default the trim window to the dialogue:
+// start at 0, end at the last line's end rounded up to a whole second, and turn trim on.
 function autoTrimFromSubs() {
-  if (!state.selected['3'] || !state.subs.length) return;
+  if (!state.selected['3']) { state.l3Trim.on = false; return; } // no face-swap → no trim window
+  if (!state.subs.length) return;
   const lastEnd = Math.max(...state.subs.map((c) => +c.end || 0));
   if (!isFinite(lastEnd) || lastEnd <= 0) return;
   state.l3Trim.on = true;
-  state.l3Trim.seconds = Math.ceil(lastEnd);
-  const cb = $('#l3Trim'); if (cb) cb.checked = true;
-  const ns = $('#l3TrimSecs'); if (ns) ns.value = state.l3Trim.seconds;
+  state.l3Trim.start = 0;
+  state.l3Trim.end = Math.ceil(lastEnd);
+  renderTrimRange();
 }
 
 // ===================== LIP-SYNC LENGTH GUARD (Level 3) =====================
@@ -497,11 +501,89 @@ function lengthViolations() {
 function renderCharacterBoxes() {
   const chars = characters();
   const wantVoice = !!state.selected['2'], wantFace = !!state.selected['3'];
-  $('#voiceBox').hidden = !(wantVoice && chars.length);
-  $('#faceBox').hidden = !(wantFace && chars.length);
+  $('#step-voices').hidden = !(wantVoice && chars.length);
+  $('#step-faces').hidden = !(wantFace && chars.length);
+  $('#step-generate').hidden = !(wantFace && chars.length);
   if (wantVoice) renderVoiceChars(chars);
   if (wantFace) { renderFaceChars(activeCharacters()); resumeL3(); }
+  renderTrimRange();
+  initStepper();
 }
+
+// ===================== GUIDED STEPPER (accordion) =====================
+// Steps live in DOM order; whichever are visible for this level self-number 1..N.
+const STEP_SEQ = ['script', 'voices', 'faces', 'generate', 'style', 'export'];
+const STEP_LABEL = { script: 'Script', voices: 'Voiceover', faces: 'Faces', generate: 'Generate', style: 'Caption style', export: 'Review & export' };
+const STEP_BADGE = { script: 'Script', voices: 'Voiceover', faces: 'Faces', generate: 'Generate', style: 'Caption style', export: 'Export' };
+let activeStep = 'script';
+let reachedStep = 'script'; // furthest step opened, so earlier ones keep their ✓
+
+function visibleSteps() { return STEP_SEQ.filter((id) => { const el = $('#step-' + id); return el && !el.hidden; }); }
+
+function initStepper(goto) {
+  const vis = visibleSteps();
+  if (!vis.length) return;
+  if (goto && vis.includes(goto)) activeStep = goto;
+  if (!vis.includes(activeStep)) activeStep = vis[0];
+  if (!vis.includes(reachedStep) || vis.indexOf(reachedStep) < vis.indexOf(activeStep)) reachedStep = activeStep;
+  renderStepStates();
+}
+
+function setStep(id) {
+  const vis = visibleSteps();
+  if (!vis.includes(id)) return;
+  activeStep = id;
+  if (vis.indexOf(id) > vis.indexOf(reachedStep)) reachedStep = id;
+  renderStepStates();
+  const el = $('#step-' + id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function renderStepStates() {
+  const vis = visibleSteps();
+  const ai = vis.indexOf(activeStep), ri = vis.indexOf(reachedStep);
+  vis.forEach((id, i) => {
+    const el = $('#step-' + id); if (!el) return;
+    const done = i < ai || (i <= ri && i !== ai);
+    el.classList.toggle('active', id === activeStep);
+    el.classList.toggle('done', done);
+    const badge = el.querySelector('.step-badge');
+    if (badge) badge.textContent = done ? '✓' : String(i + 1);
+    const next = el.querySelector('.step-next');
+    if (next) { const n = vis[i + 1]; next.hidden = !n; if (n) next.textContent = `Next: ${STEP_LABEL[n]} →`; }
+    updateStepSummary(id);
+  });
+  // Top badge reflects the step you're on (falls back to the level when all collapsed).
+  const badgeEl = $('#levelBadge');
+  if (badgeEl) badgeEl.textContent = activeStep ? (STEP_BADGE[activeStep] || modeName()) : modeName();
+}
+
+function updateStepSummary(id) {
+  const set = (sel, txt) => { const el = $(sel); if (el && txt != null) el.textContent = txt; };
+  if (id === 'script') {
+    const n = state.subs.length;
+    const spk = new Set(state.subs.map((s) => s.speaker).filter(Boolean)).size;
+    set('#sum-script', n ? `${n} line${n !== 1 ? 's' : ''}${spk ? ` · ${spk} speaker${spk !== 1 ? 's' : ''}` : ''}` : 'Edit what each character says');
+  } else if (id === 'style') {
+    const f = $('#fontSel'); const fname = f && f.selectedOptions[0] ? f.selectedOptions[0].textContent : '';
+    set('#sum-style', `${fname} · ${sizeReadout((state.subStyle && state.subStyle.sizePct) || 5.5)}`);
+  } else if (id === 'export') {
+    const q = $('#qualitySel'), r = $('#resSel');
+    set('#sum-export', `${q && q.selectedOptions[0] ? q.selectedOptions[0].textContent : ''} · ${r && r.selectedOptions[0] ? r.selectedOptions[0].textContent : ''}`);
+  }
+}
+
+document.querySelector('#stepper')?.addEventListener('click', (e) => {
+  const next = e.target.closest('.step-next');
+  if (next) { const vis = visibleSteps(); const i = vis.indexOf(activeStep); if (i >= 0 && i < vis.length - 1) setStep(vis[i + 1]); return; }
+  const head = e.target.closest('.step-head');
+  if (head) {
+    const sec = head.closest('.step'); if (!sec) return;
+    // Clicking the open step's header collapses it; clicking a collapsed one opens it.
+    if (sec.dataset.step === activeStep) { activeStep = null; renderStepStates(); }
+    else setStep(sec.dataset.step);
+  }
+});
 
 // A group speaker ("Both, in unison") is voiced by the individual voices together —
 // it needs no prompt of its own. Mirrors the server's isGroupSpeaker.
@@ -611,6 +693,7 @@ video.addEventListener('loadedmetadata', () => {
   if (ar < 1) { stage.style.height = '72vh'; stage.style.width = 'auto'; }
   else { stage.style.height = ''; stage.style.width = ''; }
   const szv = $('#sizeVal'); if (szv) szv.textContent = sizeReadout(state.subStyle.sizePct || 5.5);
+  renderTrimRange(); // real duration is known now, so the trim scrubber can size correctly
 });
 // If the media fails to load (e.g. a corrupt audio track), keep the layout intact
 // and tell the user instead of leaving a blank/collapsed preview.
@@ -630,7 +713,9 @@ function setPreviewSource(which) {
   const stage = document.querySelector('.stage');
   stage.style.aspectRatio = '16 / 9'; stage.style.height = ''; stage.style.width = '';
   video.src = src; video.load(); video.muted = false;
-  $('#previewToggle').textContent = showResult ? '▶ Showing: new video · tap for original' : '▶ Showing: original · tap for new video';
+  $('#previewToggle').textContent = showResult ? '⇄ Showing AI result — tap for original' : '⇄ Showing original — tap for AI result';
+  const badge = $('#previewBadge');
+  if (badge) { badge.hidden = !state.resultUrl; badge.textContent = showResult ? 'AI RESULT' : 'ORIGINAL'; badge.classList.toggle('result', showResult); }
   updateSubOverlay();
   updateExportSource();
 }
@@ -639,8 +724,8 @@ $('#previewToggle').addEventListener('click', () => setPreviewSource(state.showi
 // Tell the user which video Burn & Export will act on (matches the preview toggle).
 function updateExportSource() {
   const el = $('#exportSource'); if (!el) return;
-  if (state.showingResult && state.resultUrl) el.textContent = '⬇ Export will burn your captions onto the generated face-swap video (currently shown).';
-  else if (state.resultUrl) el.textContent = 'Export will use the original video. Tap the toggle above the preview to burn onto the generated video instead.';
+  if (state.showingResult && state.resultUrl) el.textContent = 'Export burns your captions onto the generated video shown above.';
+  else if (state.resultUrl) el.textContent = 'Export uses the original video. Switch the preview above to burn onto the generated video instead.';
   else el.textContent = '';
 }
 
@@ -710,7 +795,7 @@ function recordRender(saved, s) {
   saveRender({ id: saved.jobId, videoId: saved.videoId, videoName: saved.videoName || saved.videoId,
     videoUrl: saved.videoUrl || null, videoPreview: saved.videoPreview || null,
     url: s.video_url, createdAt: now, expiresAt: now + RENDER_TTL, cost: s.cost_usd, elapsed: s.elapsed_seconds,
-    subs: saved.subs || [], subStyle: saved.subStyle || null, trim: saved.trim || 0, faces: saved.faces || {} });
+    subs: saved.subs || [], subStyle: saved.subStyle || null, trim: saved.trim || 0, trimStart: saved.trimStart || 0, faces: saved.faces || {} });
 }
 
 // Apply a saved subtitle style to any overlay element (mirrors applySubStyle).
@@ -741,7 +826,7 @@ function renderCardEl(r) {
     </div>
     <div class="render-info">
       <div class="render-title">${escapeHtml(r.videoName || r.videoId)}</div>
-      <div class="render-meta">Generated ${agoStr(r.createdAt)}${r.cost != null ? ` · $${r.cost}` : ''}${r.trim ? ` · first ${r.trim}s` : ''} · link expires in ${expiryStr(r.expiresAt)}</div>
+      <div class="render-meta">Generated ${agoStr(r.createdAt)}${r.cost != null ? ` · $${r.cost}` : ''}${r.trim ? ` · ${fmtClock(r.trimStart || 0)}–${fmtClock((r.trimStart || 0) + r.trim)} clip` : ''} · link expires in ${expiryStr(r.expiresAt)}</div>
       <div class="render-actions">
         <button class="mini open">▶ Open in studio</button>
         <a class="mini" href="${escapeHtml(downloadHref(r.url, (r.videoName || 'render') + '.mp4'))}">⬇ Download</a>
@@ -781,7 +866,7 @@ async function openRenderInStudio(r) {
   if (r.subStyle) state.subStyle = { font: 'dejavu', sizePct: 5.5, color: '#ffffff', bg: 'box', bgColor: '#000000', ...r.subStyle };
   state.faces = {};
   Object.entries(r.faces || {}).forEach(([k, f]) => { state.faces[k] = { name: f.name, url: f.url || '', dataUrl: null, fileName: null, uploaded: !!f.url }; });
-  state.l3Trim = { on: !!r.trim, seconds: r.trim || 27 };
+  state.l3Trim = { on: !!r.trim, start: r.trimStart || 0, end: (r.trimStart || 0) + (r.trim || 27) };
   state.pinnedRender = r; // openStudio pins this exact result and shows it
   deriveLevel();
   $('#rendersView').hidden = true;
@@ -798,7 +883,7 @@ function openRenders() {
   document.body.classList.remove('studio-open');
   window.scrollTo({ top: 0 });
 }
-$('#navRenders').addEventListener('click', openRenders);
+$('#navRenders')?.addEventListener('click', openRenders);
 $('#navHome').addEventListener('click', () => { $('#rendersView').hidden = true; $('#formView').hidden = true; $('#studio').hidden = true; document.body.classList.remove('studio-open'); $('#browseView').hidden = false; $('#selbar').hidden = !Object.keys(state.selected).length; window.scrollTo({ top: 0 }); });
 $('#rendersBack').addEventListener('click', () => { $('#rendersView').hidden = true; $('#browseView').hidden = false; $('#selbar').hidden = !Object.keys(state.selected).length; });
 
@@ -814,7 +899,7 @@ function speakerColor(name) { let h = 0; for (const ch of String(name)) h = (h *
 function initials(name) { const w = String(name).trim().split(/\s+/); return (((w[0] || '')[0] || '') + ((w[1] || '')[0] || '')).toUpperCase() || '•'; }
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 // Subtitles shown/edited in the timeline. When trimming, only the in-window lines.
-function visibleSubs() { return state.l3Trim.on ? state.subs.filter((c) => c.start < state.l3Trim.seconds) : state.subs; }
+function visibleSubs() { return state.l3Trim.on ? state.subs.filter((c) => +c.end > state.l3Trim.start && +c.start < state.l3Trim.end) : state.subs; }
 function updateTabCounts() {
   const labels = { intro: 'Intro', subs: 'Subtitles', outro: 'Outro' };
   const count = { intro: state.intro.length, subs: visibleSubs().length, outro: state.outro.length };
@@ -833,7 +918,7 @@ function renderPane(kind) {
   head.textContent = isScreen
     ? `Black-screen text shown ${kind === 'intro' ? 'before' : 'after'} the video. Add as many as you like.`
     : trimmed
-    ? `Showing the ${list.length} line(s) within the first ${state.l3Trim.seconds}s (of ${state.subs.length}). Lines after ${state.l3Trim.seconds}s are excluded from this clip.`
+    ? `Showing the ${list.length} line(s) inside the ${fmtClock(state.l3Trim.start)}–${fmtClock(state.l3Trim.end)} face-swap window (of ${state.subs.length}). Lines outside it aren't in this clip.`
     : 'Burned onto the video at each timestamp. Edit text and the preview updates live.';
   pane.appendChild(head);
 
@@ -1089,7 +1174,7 @@ function setProgress(pct, stage) { $('#progressBar').style.width = pct + '%'; $(
 $('#exportBtn').addEventListener('click', async () => {
   if (!state.video) { setMsg('#exportMsg', 'No base video selected.', 'err'); return; }
   if (state.dirty) {
-    setMsg('#exportMsg', 'You have unsaved changes — click “Apply and save changes” first.', 'err');
+    setMsg('#exportMsg', 'You have unsaved changes — click “Apply & save” first.', 'err');
     $('.applybar').scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
@@ -1141,7 +1226,7 @@ $('#exportBtn').addEventListener('click', async () => {
     const a = document.createElement('a');
     a.href = url; a.download = 'export.mp4'; a.click();
     URL.revokeObjectURL(url);
-    setMsg('#exportMsg', 'Done! Downloaded export.mp4', 'ok');
+    setMsg('#exportMsg', 'Done — your MP4 downloaded (export.mp4).', 'ok');
     setTimeout(() => { $('#progressWrap').hidden = true; }, 1500);
   } catch (e) {
     setMsg('#exportMsg', e.message, 'err');
@@ -1167,9 +1252,63 @@ function facesPayload() {
   return out;
 }
 
-// Trim controls
-$('#l3Trim').addEventListener('change', (e) => { state.l3Trim.on = e.target.checked; renderPane('subs'); updateTabCounts(); renderCharacterBoxes(); });
-$('#l3TrimSecs').addEventListener('input', (e) => { state.l3Trim.seconds = Math.max(1, parseInt(e.target.value, 10) || 27); if (state.l3Trim.on) { renderPane('subs'); updateTabCounts(); renderCharacterBoxes(); } });
+// ===================== TRIM RANGE (visual scrubber) =====================
+function fmtClock(s) { s = Math.max(0, Math.round(+s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+function videoDur() { const d = video && video.duration; return (d && isFinite(d) && d > 0) ? d : Math.max(state.l3Trim.end || 30, 1); }
+function renderTrimRange() {
+  const track = $('#trimTrack'); if (!track) return;
+  const dur = videoDur();
+  // Keep the stored window inside the real duration (the video may be shorter than a
+  // stale default), then reflect it in the UI.
+  state.l3Trim.start = Math.max(0, Math.min(state.l3Trim.start, dur));
+  state.l3Trim.end = Math.max(state.l3Trim.start + 0.5, Math.min(state.l3Trim.end, dur));
+  const s = state.l3Trim.start, e = state.l3Trim.end;
+  const p0 = dur ? (s / dur) * 100 : 0, p1 = dur ? (e / dur) * 100 : 100;
+  const sel = $('#trimSel'); if (sel) { sel.style.left = p0 + '%'; sel.style.right = (100 - p1) + '%'; }
+  const h0 = $('#trimH0'), h1 = $('#trimH1'); if (h0) h0.style.left = p0 + '%'; if (h1) h1.style.left = p1 + '%';
+  $('#trimStartLbl').textContent = fmtClock(s);
+  $('#trimEndLbl').textContent = fmtClock(e);
+  $('#trimLenLbl').textContent = fmtClock(e - s) + ' selected';
+  const whole = s <= 0.05 && e >= dur - 0.05;
+  const wb = $('#trimWhole'); if (wb) wb.classList.toggle('active', whole);
+  state.l3Trim.on = !whole; // whole clip → no trim sent
+}
+function setupTrimDrag() {
+  const track = $('#trimTrack'); if (!track || track._wired) return; track._wired = true;
+  const timeAt = (clientX) => { const r = track.getBoundingClientRect(); const p = Math.max(0, Math.min(1, (clientX - r.left) / r.width)); return p * videoDur(); };
+  // Pointer capture: once a handle is grabbed it receives every move until release, so the
+  // other handle can never be moved by accident (the reported "start jumps to the end" bug).
+  const bind = (id, role) => {
+    const h = $('#' + id); if (!h) return;
+    h.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      try { h.setPointerCapture(ev.pointerId); } catch { /* ignore */ }
+      h.classList.add('dragging');
+      const onMove = (e) => {
+        const t = timeAt(e.clientX), dur = videoDur(), MIN = 0.5;
+        if (role === 'start') state.l3Trim.start = Math.max(0, Math.min(t, state.l3Trim.end - MIN));
+        else state.l3Trim.end = Math.min(dur, Math.max(t, state.l3Trim.start + MIN));
+        renderTrimRange();
+        try { video.currentTime = role === 'start' ? state.l3Trim.start : state.l3Trim.end; } catch { /* not ready */ }
+      };
+      const onUp = () => {
+        h.classList.remove('dragging');
+        try { h.releasePointerCapture(ev.pointerId); } catch { /* ignore */ }
+        h.removeEventListener('pointermove', onMove);
+        h.removeEventListener('pointerup', onUp);
+        h.removeEventListener('pointercancel', onUp);
+        renderPane('subs'); updateTabCounts(); renderCharacterBoxes();
+      };
+      h.addEventListener('pointermove', onMove);
+      h.addEventListener('pointerup', onUp);
+      h.addEventListener('pointercancel', onUp);
+    });
+  };
+  bind('trimH0', 'start');
+  bind('trimH1', 'end');
+  $('#trimWhole')?.addEventListener('click', () => { state.l3Trim.start = 0; state.l3Trim.end = videoDur(); renderTrimRange(); renderPane('subs'); updateTabCounts(); renderCharacterBoxes(); });
+}
+setupTrimDrag();
 
 function l3SetStage(stage) {
   const i = Math.max(0, L3_ALL.indexOf(stage));
@@ -1260,7 +1399,7 @@ $('#level3Btn').addEventListener('click', async () => {
   const faces = facesPayload();
   // Every character present in this clip (trim window, or the whole video) must have a face.
   const missing = chars.filter((ch) => !faces[ch.id]);
-  if (missing.length) { setMsg('#level3Msg', `Upload a face for every character${state.l3Trim.on ? ` in the first ${state.l3Trim.seconds}s` : ''} — missing: ${missing.map((c) => c.name).join(', ')}.`, 'err'); return; }
+  if (missing.length) { setMsg('#level3Msg', `Upload a face for every character${state.l3Trim.on ? ` in the ${fmtClock(state.l3Trim.start)}–${fmtClock(state.l3Trim.end)} window` : ''} — missing: ${missing.map((c) => c.name).join(', ')}.`, 'err'); return; }
   // Lip-sync: every line must be within ±10% of the original line's length at its slot.
   const bad = lengthViolations();
   if (bad.length) {
@@ -1268,10 +1407,12 @@ $('#level3Btn').addEventListener('click', async () => {
     setMsg('#level3Msg', `${bad.length} line(s) outside ±10% of the original length (needed for lip-sync): ${eg}${bad.length > 3 ? '…' : ''}`, 'err');
     return;
   }
-  const trim = state.l3Trim.on ? state.l3Trim.seconds : 0;
+  const start = state.l3Trim.on ? Math.max(0, Math.round(state.l3Trim.start)) : 0;
+  const trim = state.l3Trim.on ? Math.max(1, Math.round(state.l3Trim.end - state.l3Trim.start)) : 0;
+  const end = start + trim;
   const ok = confirm(
     `Generate a face-swap + dub video for ${chars.length} character${chars.length === 1 ? '' : 's'} (all swapped)` +
-    (trim ? ` — first ${trim}s only` : '') +
+    (trim ? ` — the ${fmtClock(start)}–${fmtClock(end)} segment only` : '') +
     `.\n\nThis runs a paid AI pipeline${trim ? ' (cheaper on a short clip)' : ': ~$5–8 and ~35–55 minutes'}. Proceed?`);
   if (!ok) return;
   $('#level3Btn').disabled = true;
@@ -1279,19 +1420,21 @@ $('#level3Btn').addEventListener('click', async () => {
   $('#level3Progress').hidden = false; $('#l3Result').hidden = true; $('#l3Dismiss').hidden = true; l3SetStage('preparing');
   // Captions are never burned by the face-swap pipeline — the studio's own export
   // burns them, so we always send subsBurn:false (no user option for it anymore).
-  const reqBody = { videoId: state.video.id, language: 'en-US', subs: state.subs, faces, subsBurn: false, trimSeconds: trim || undefined };
-  console.log('[L3] submitting', { video: reqBody.videoId, characters: chars.map((c) => c.id), subs: state.subs.length, trim });
+  const reqBody = { videoId: state.video.id, language: 'en-US', subs: state.subs, faces, subsBurn: false, trimSeconds: trim || undefined, trimStart: start || undefined };
+  console.log('[L3] submitting', { video: reqBody.videoId, characters: chars.map((c) => c.id), subs: state.subs.length, trim, start });
   try {
     const r = await fetch('/level3', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reqBody) });
     const j = await r.json();
     console.log('[L3] submit response', r.status, j);
     if (!r.ok) throw new Error(j.error || 'submit failed');
-    // Snapshot exactly what was sent (trim-filtered subs + style) so the render can be
-    // shown later with captions overlaid, matching the trimmed result's timeline.
-    const sentSubs = (trim ? state.subs.filter((c) => c.start < trim).map((c) => ({ ...c, end: Math.min(c.end, trim) })) : state.subs)
+    // Snapshot exactly what was sent (windowed + shifted to the clip's t=0) so the render
+    // can later be shown with captions overlaid, matching the trimmed result's timeline.
+    const sentSubs = (trim
+      ? state.subs.filter((c) => +c.end > start && +c.start < end).map((c) => ({ ...c, start: Math.max(0, c.start - start), end: Math.min(c.end, end) - start }))
+      : state.subs)
       .map((c) => ({ start: c.start, end: c.end, text: c.text, person: c.person }));
     const slimFaces = Object.fromEntries(Object.entries(faces).map(([k, f]) => [k, { name: f.name, url: f.url || null }]));
-    localStorage.setItem(L3_STORE, JSON.stringify({ jobId: j.jobId, at: Date.now(), videoId: state.video.id, videoName: state.video.name || state.video.id, videoUrl: state.video.url || null, videoPreview: state.video.preview || null, subs: sentSubs, subStyle: { ...state.subStyle }, trim, faces: slimFaces }));
+    localStorage.setItem(L3_STORE, JSON.stringify({ jobId: j.jobId, at: Date.now(), videoId: state.video.id, videoName: state.video.name || state.video.id, videoUrl: state.video.url || null, videoPreview: state.video.preview || null, subs: sentSubs, subStyle: { ...state.subStyle }, trim, trimStart: start, faces: slimFaces }));
     setMsg('#level3Msg', 'Submitted — preparing the clip, then the AI pipeline (~35–55 min). You can leave this open.', 'ok');
     stopL3Poll(); l3Poll();
   } catch (e) { console.error('[L3] submit failed', e); setMsg('#level3Msg', e.message, 'err'); $('#level3Btn').disabled = false; $('#level3Progress').hidden = true; }

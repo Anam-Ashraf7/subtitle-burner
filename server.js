@@ -774,13 +774,15 @@ async function uploadFaceToS3(id, dataUrl) {
 }
 // Trim the source video to its first `seconds` and upload the clip to S3 → reachable URL.
 // `-t` makes ffmpeg stop reading early, so only the first slice is downloaded.
-async function trimVideoAndUpload(src, seconds) {
+async function trimVideoAndUpload(src, seconds, start = 0) {
   const tmp = fs.mkdtempSync(path.join(WORK, 'trim-'));
   const out = path.join(tmp, 'clip.mp4');
   const { path: local, cleanup } = await localInput(src.url);
   try {
-    await run(ffmpegPath, ['-y', '-i', local, '-t', String(seconds), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-movflags', '+faststart', out]);
-    const key = `clips/${slug(path.basename(src.key, path.extname(src.key)))}-first${seconds}s-${Date.now()}-${randomUUID().slice(0, 8)}.mp4`;
+    const seek = +start > 0 ? ['-ss', String(start)] : [];
+    await run(ffmpegPath, ['-y', ...seek, '-i', local, '-t', String(seconds), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-movflags', '+faststart', out]);
+    const tag = +start > 0 ? `${Math.round(start)}s+${seconds}s` : `first${seconds}s`;
+    const key = `clips/${slug(path.basename(src.key, path.extname(src.key)))}-${tag}-${Date.now()}-${randomUUID().slice(0, 8)}.mp4`;
     return uploadToS3(key, fs.readFileSync(out), 'video/mp4');
   } finally { cleanup(); try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } }
 }
@@ -831,10 +833,13 @@ const level3Jobs = new Map();
 
 app.post('/level3', async (req, res) => {
   try {
-    const { videoId, subs = [], faces = {}, language = 'en-US', limitSeconds, subsBurn = true, trimSeconds } = req.body || {};
+    const { videoId, subs = [], faces = {}, language = 'en-US', limitSeconds, subsBurn = true, trimSeconds, trimStart } = req.body || {};
     const src = resolveVideo(videoId);
     if (!src) return res.status(404).json({ error: 'video not found in library' });
-    const trim = +trimSeconds > 0 ? +trimSeconds : 0;
+    const trim = +trimSeconds > 0 ? +trimSeconds : 0;      // duration of the segment to process
+    const tStart = trim && +trimStart > 0 ? +trimStart : 0; // offset into the clip where it begins
+    const tEnd = tStart + trim;
+    const inWin = (c) => +c.end > tStart && +c.start < tEnd; // subtitle overlaps the trim window
     if (trim && !s3Enabled) return res.status(400).json({ error: 'Trimming needs S3 upload configured (S3_UPLOAD_BUCKET) to host the clip.' });
     const base = publicBase(req);
     const hasUploaded = Object.values(faces).some((f) => f && f.dataUrl && !(f.url && /^https?:\/\//i.test(f.url)));
@@ -843,10 +848,10 @@ app.post('/level3', async (req, res) => {
     }
     // Every character present in the clip (trim window, or the whole video) must have
     // a face uploaded — enforce it up front so the browser gets an immediate error.
-    const effForCheck = trim ? subs.filter((c) => +c.start < trim) : subs;
+    const effForCheck = trim ? subs.filter(inWin) : subs;
     const presentIds = [...new Set(effForCheck.map((c) => slug(cleanSpeaker(c.person))).filter(Boolean))];
     const missingFace = presentIds.filter((id) => { const f = faces[id]; return !(f && (f.url || f.dataUrl)); });
-    if (missingFace.length) return res.status(400).json({ error: `Upload a face for every character${trim ? ` in the first ${trim}s` : ''}: missing ${missingFace.join(', ')}.` });
+    if (missingFace.length) return res.status(400).json({ error: `Upload a face for every character${trim ? ` in the selected ${tStart}–${tEnd}s` : ''}: missing ${missingFace.join(', ')}.` });
 
     // Respond immediately with a local job id; do the heavy lifting in the background.
     const localId = `l3_${randomUUID()}`;
@@ -861,9 +866,10 @@ app.post('/level3', async (req, res) => {
         let effSubs = subs;
         if (trim) {
           job.stage = 'trimming';
-          console.log(`[L3] ${localId} trimming to first ${trim}s…`);
-          sourceUrl = await trimVideoAndUpload(src, trim);
-          effSubs = subs.filter((c) => +c.start < trim).map((c) => ({ ...c, end: Math.min(+c.end, trim) }));
+          console.log(`[L3] ${localId} trimming ${tStart}s–${tEnd}s (${trim}s)…`);
+          sourceUrl = await trimVideoAndUpload(src, trim, tStart);
+          // Window the subtitles to the segment, then shift them so t=0 is the clip start.
+          effSubs = subs.filter(inWin).map((c) => ({ ...c, start: Math.max(0, +c.start - tStart), end: Math.min(+c.end, tEnd) - tStart }));
           console.log(`[L3] ${localId} trimmed clip uploaded.`);
         }
         job.stage = 'uploading-faces';
@@ -889,7 +895,7 @@ app.post('/level3', async (req, res) => {
         const subtitles = effSubs
           .filter((c) => c.text && c.text.trim() && slug(cleanSpeaker(c.person)))
           .map((c) => ({ id: c.id, character_id: slug(cleanSpeaker(c.person)), start_sec: +c.start, end_sec: +c.end, text: c.text }));
-        if (!subtitles.length) throw new Error(trim ? `No spoken lines in the first ${trim}s.` : 'No spoken subtitle lines.');
+        if (!subtitles.length) throw new Error(trim ? `No spoken lines in the selected ${tStart}–${tEnd}s.` : 'No spoken subtitle lines.');
 
         const payload = { video_url: sourceUrl, language, characters, subtitles };
         if (subsBurn === false) payload.subs = false;

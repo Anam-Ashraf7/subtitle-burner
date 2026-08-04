@@ -11,10 +11,10 @@
 </head>
 <body>
 <nav class="nav">
-  <div class="brand"><span class="brand-mark">▶</span> VIDEO STUDIO</div>
+  <div class="brand"><span class="brand-mark">▶</span> AI VIDEO STUDIO</div>
   <div class="nav-links">
     <span id="navHome">Home</span>
-    <span id="navRenders">My Renders</span>
+    <!-- <span id="navRenders">My Renders</span> -->
     <span id="navUpload" class="nav-upload">⬆ Upload xlsx</span>
     <span id="navSaveTpl" class="nav-upload" hidden title="Save this template to your library">☁ Save to library</span>
   </div>
@@ -24,19 +24,26 @@
 <div id="browseView">
   <main id="rows">
     <div class="row">
-      <h2 class="row-title"><span class="lv">Level 0</span> Intro &amp; Outro</h2>
+      <h2 class="row-title"><span class="lv">Level 0</span> Intro &amp; Outro only
+      </h2>
       <div class="rail" id="railLevel0"><div class="loading">Loading…</div></div>
     </div>
     <div class="row">
-      <h2 class="row-title"><span class="lv">Level 1</span> Subtitles</h2>
+      <h2 class="row-title"><span class="lv">Level 1</span> Subtitles only (existing audio)
+        <span class="feats"><span class="feat">+ Intro &amp; Outro</span></span>
+      </h2>
       <div class="rail" id="railLevel1"></div>
     </div>
     <div class="row">
-      <h2 class="row-title"><span class="lv">Level 2</span> Voiceover</h2>
+      <h2 class="row-title"><span class="lv">Level 2</span> Voiceover and Subtitles
+        <span class="feats"><span class="feat">+ Intro &amp; Outro</span></span>
+      </h2>
       <div class="rail" id="railLevel2"></div>
     </div>
     <div class="row">
-      <h2 class="row-title"><span class="lv">Level 3</span> Manipulate heads</h2>
+      <h2 class="row-title"><span class="lv">Level 3</span> Face Swap, Lip Sync and Voiceover
+        <span class="feats"><span class="feat">+ Intro &amp; Outro</span><span class="feat">+ Subtitles</span></span>
+      </h2>
       <div class="rail" id="railLevel3"></div>
     </div>
   </main>
@@ -70,7 +77,7 @@
   <div class="studio-bar">
     <button id="formBack" class="btn-back">← Library</button>
     <div class="studio-heading">
-      <span class="sh-now">DETAILS</span>
+      <!-- <span class="sh-now">DETAILS</span> -->
       <span id="formTitle" class="sh-title">—</span>
       <span id="formType" class="sh-mode"></span>
     </div>
@@ -78,20 +85,20 @@
   <div class="form-wrap">
     <p class="form-intro">Fill in the details — we'll drop them into the script, then open the editor.</p>
     <form id="genForm" class="genform">
-      <div class="fld"><span class="fld-label"><i>1</i> Full name <span class="maps" id="map-fullname"></span></span>
-        <input id="f-fullname" class="tin" type="text" placeholder="Enter full name" required />
+      <div class="fld"><label class="fld-label" for="f-fullname"><i>1</i> Full name <span class="maps" id="map-fullname"></span></label>
+        <input id="f-fullname" class="tin" type="text" placeholder="Enter full name" autocomplete="name" required />
       </div>
-      <div class="fld"><span class="fld-label"><i>2</i> Position <span class="maps" id="map-position"></span></span>
+      <div class="fld"><label class="fld-label" for="f-position"><i>2</i> Position <span class="maps" id="map-position"></span></label>
         <select id="f-position" class="tin"></select>
       </div>
-      <div class="fld"><span class="fld-label"><i>3</i> Location <span class="maps" id="map-city"></span></span>
-        <select id="f-state" class="tin" style="margin-bottom:8px"></select>
+      <div class="fld" role="group" aria-labelledby="loc-lbl"><span class="fld-label" id="loc-lbl"><i>3</i> Location <span class="maps" id="map-city"></span></span>
+        <select id="f-state" class="tin" aria-label="State" style="margin-bottom:8px"></select>
         <div class="loc-row">
-          <input id="f-city" class="tin" type="text" placeholder="City" />
-          <input id="f-county" class="tin" type="text" placeholder="County (optional)" />
+          <input id="f-city" class="tin" type="text" placeholder="City" aria-label="City" autocomplete="address-level2" />
+          <input id="f-county" class="tin" type="text" placeholder="County (optional)" aria-label="County (optional)" />
         </div>
       </div>
-      <div class="fld"><span class="fld-label"><i>4</i> Party affiliation</span>
+      <div class="fld"><label class="fld-label" for="f-party"><i>4</i> Party affiliation</label>
         <select id="f-party" class="tin"></select>
       </div>
       <div id="dynFields"></div>
@@ -117,7 +124,7 @@
   </div>
 
   <div class="studio-grid">
-    <!-- LEFT: cinematic preview + export -->
+    <!-- LEFT: persistent video preview -->
     <div class="preview-pane">
       <div id="noVideoNote" class="novideo" hidden>
         <strong>No source video yet</strong>
@@ -126,120 +133,199 @@
       <div class="stage">
         <video id="video" playsinline controls></video>
         <div id="subOverlay" class="sub-overlay"></div>
+        <div id="previewBadge" class="preview-badge" hidden></div>
         <div id="blackOverlay" class="black-overlay" hidden><div id="blackText"></div></div>
         <audio id="voiceAudio" hidden preload="auto"></audio>
       </div>
       <div class="preview-controls">
-        <button id="playFull" class="ghost">▶ Preview intro → video → outro</button>
+        <button id="playFull" class="ghost">▶ Play with intro &amp; outro</button>
         <button id="stopPreview" class="ghost" hidden>■ Stop</button>
-        <button id="previewToggle" class="ghost toggle" hidden>▶ Showing: new video · tap for original</button>
-      </div>
-
-      <div id="substyleBox" class="render-box">
-        <div class="render-head">Subtitle style <span class="hint">— preview matches the export</span></div>
-        <div class="render-row">
-          <label class="sel">Font
-            <select id="fontSel">
-              <option value="dejavu">Sans (DejaVu)</option>
-              <option value="poppins">Poppins</option>
-              <option value="ptserif">PT Serif</option>
-              <option value="anton">Anton</option>
-              <option value="bebas">Bebas Neue</option>
-              <option value="pacifico">Pacifico</option>
-            </select>
-          </label>
-          <label class="sel">Size <span id="sizeVal" class="range-val">5.5%</span>
-            <input type="range" id="sizeSel" class="range" min="3" max="9" step="0.1" value="5.5" />
-          </label>
-        </div>
-        <div class="render-row">
-          <label class="sel">Background
-            <select id="bgSel">
-              <option value="box" selected>Semi-transparent</option>
-              <option value="solid">Solid</option>
-              <option value="none">None (outline)</option>
-            </select>
-          </label>
-          <label class="sel">Box color
-            <input type="color" id="bgColorSel" value="#000000" />
-          </label>
-          <label class="sel">Text color
-            <input type="color" id="colorSel" value="#ffffff" />
-          </label>
-        </div>
-      </div>
-
-      <div id="voiceBox" class="render-box" hidden>
-        <div class="render-head">Voiceover <span class="hint">— Level 2 · describe the voice for each character</span></div>
-        <div id="voiceChars" class="charlist"></div>
-      </div>
-
-      <div id="faceBox" class="render-box" hidden>
-        <div class="render-head">Face swap &amp; lip sync <span class="hint">— Level 3 · a face for each character</span></div>
-        <div id="faceChars" class="charlist"></div>
-        <div class="l3-foot">
-          <label class="l3-opt"><input type="checkbox" id="l3Trim" /> Only process the first <input type="number" id="l3TrimSecs" min="1" max="600" step="1" value="27" class="l3-num" /> seconds <span class="hint">(trims the clip — faster &amp; cheaper)</span></label>
-          <button id="level3Btn">✨ Generate face-swap video (Level 3)</button>
-          <div id="level3Msg" class="msg"></div>
-          <div id="level3Progress" class="l3-progress" hidden>
-            <div class="l3-stagebar"><div id="l3Bar" class="l3-bar"></div></div>
-            <div class="l3-status"><span id="l3Stage">Submitting…</span><span id="l3Elapsed"></span></div>
-            <a id="l3Result" class="l3-result" href="#" hidden>⬇ Download result</a>
-            <button id="l3Dismiss" class="l3-dismiss" hidden>Dismiss</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="render-box">
-        <div class="render-head">Export</div>
-        <div id="chosenTemplate" class="chosen-template"></div>
-        <div id="exportSource" class="hint" style="margin:2px 0 10px"></div>
-        <div class="render-row">
-          <label class="sel">Quality
-            <select id="qualitySel">
-              <option value="fast">Fastest</option>
-              <option value="balanced" selected>Balanced</option>
-              <option value="high">High</option>
-            </select>
-          </label>
-          <label class="sel">Resolution
-            <select id="resSel">
-              <option value="480">480p</option>
-              <option value="720">720p</option>
-              <option value="1080" selected>1080p</option>
-              <option value="2160">4K</option>
-            </select>
-          </label>
-        </div>
-        <button id="exportBtn">⬇ Burn &amp; Export MP4</button>
-        <div id="exportMsg" class="msg"></div>
-        <div id="progressWrap" class="progress-wrap" hidden>
-          <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
-          <div class="progress-label"><span id="progressStage">Starting…</span><span id="progressPct">0%</span></div>
-        </div>
+        <button id="previewToggle" class="ghost toggle" hidden>Showing generated video · switch to original</button>
       </div>
     </div>
 
-    <!-- RIGHT: timeline editor -->
-    <div class="editor-pane">
-      <div class="editor-head">
-        <div class="applybar">
-          <span class="apply-dot" aria-hidden="true"></span>
-          <span class="apply-text">
-            <b id="applyState">All changes applied</b>
-            <small id="applyHint">Your edits are ready to export</small>
-          </span>
-          <button id="applyBtn" class="btn-apply" disabled><span class="ba-ico">✓</span> Apply &amp; save</button>
+    <!-- RIGHT: guided step-by-step -->
+    <div class="stepper" id="stepper">
+
+      <!-- STEP · Script & timing -->
+      <section class="step" id="step-script" data-step="script">
+        <button type="button" class="step-head">
+          <span class="step-badge">1</span>
+          <span class="step-titles"><span class="step-title">Script &amp; timing</span><span class="step-sum" id="sum-script">Edit what each character says</span></span>
+          <span class="step-chev" aria-hidden="true">▾</span>
+        </button>
+        <div class="step-body">
+          <div class="editor-head">
+            <div class="applybar">
+              <span class="apply-dot" aria-hidden="true"></span>
+              <span class="apply-text">
+                <b id="applyState">All changes applied</b>
+                <small id="applyHint">Your edits are ready to export</small>
+              </span>
+              <button id="applyBtn" class="btn-apply" disabled><span class="ba-ico">✓</span> Apply &amp; save</button>
+            </div>
+            <div class="tabs">
+              <button class="tab active" data-tab="intro">Intro</button>
+              <button class="tab" data-tab="subs">Subtitles</button>
+              <button class="tab" data-tab="outro">Outro</button>
+            </div>
+          </div>
+          <div class="step-scroll">
+            <div class="tabpane timeline" id="pane-intro"></div>
+            <div class="tabpane timeline" id="pane-subs" hidden></div>
+            <div class="tabpane timeline" id="pane-outro" hidden></div>
+          </div>
+          <div class="step-cta"><button type="button" class="step-next">Next →</button></div>
         </div>
-        <div class="tabs">
-          <button class="tab active" data-tab="intro">Intro</button>
-          <button class="tab" data-tab="subs">Subtitles</button>
-          <button class="tab" data-tab="outro">Outro</button>
+      </section>
+
+      <!-- STEP · Voiceover (Level 2) -->
+      <section class="step" id="step-voices" data-step="voices" hidden>
+        <button type="button" class="step-head">
+          <span class="step-badge">2</span>
+          <span class="step-titles"><span class="step-title">Voiceover</span><span class="step-sum" id="sum-voices">Describe each character's voice</span></span>
+          <span class="step-chev" aria-hidden="true">▾</span>
+        </button>
+        <div class="step-body">
+          <div class="step-scroll"><div id="voiceChars" class="charlist"></div></div>
+          <div class="step-cta"><button type="button" class="step-next">Next →</button></div>
         </div>
-      </div>
-      <div class="tabpane timeline" id="pane-intro"></div>
-      <div class="tabpane timeline" id="pane-subs" hidden></div>
-      <div class="tabpane timeline" id="pane-outro" hidden></div>
+      </section>
+
+      <!-- STEP · Faces (Level 3) -->
+      <section class="step" id="step-faces" data-step="faces" hidden>
+        <button type="button" class="step-head">
+          <span class="step-badge">2</span>
+          <span class="step-titles"><span class="step-title">Faces</span><span class="step-sum" id="sum-faces">Upload a face for each character</span></span>
+          <span class="step-chev" aria-hidden="true">▾</span>
+        </button>
+        <div class="step-body">
+          <div class="step-scroll"><div id="faceChars" class="charlist"></div></div>
+          <div class="step-cta"><button type="button" class="step-next">Next →</button></div>
+        </div>
+      </section>
+
+      <!-- STEP · Generate face-swap (Level 3) -->
+      <section class="step" id="step-generate" data-step="generate" hidden>
+        <button type="button" class="step-head">
+          <span class="step-badge">3</span>
+          <span class="step-titles"><span class="step-title">Generate face-swap</span><span class="step-sum" id="sum-generate">Create the AI face-swap video</span></span>
+          <span class="step-chev" aria-hidden="true">▾</span>
+        </button>
+        <div class="step-body">
+          <div class="step-scroll">
+            <div class="trim-range">
+              <div class="trim-rhead">
+                <span class="trim-title">Which part gets face-swapped</span>
+                <button type="button" id="trimWhole" class="trim-whole">Whole video</button>
+              </div>
+              <div class="trim-track" id="trimTrack">
+                <div class="trim-fill" id="trimSel"></div>
+                <button type="button" class="trim-handle" id="trimH0" aria-label="Start of segment"></button>
+                <button type="button" class="trim-handle" id="trimH1" aria-label="End of segment"></button>
+              </div>
+              <div class="trim-labels">
+                <span id="trimStartLbl">0:00</span>
+                <span id="trimLenLbl" class="trim-len">0:15 selected</span>
+                <span id="trimEndLbl">0:15</span>
+              </div>
+              <p class="hint trim-note">Drag the handles to choose the segment — a shorter clip is faster &amp; cheaper to face-swap.</p>
+            </div>
+            <button id="level3Btn">✨ Generate face-swap video (Level 3)</button>
+            <div id="level3Msg" class="msg"></div>
+            <div id="level3Progress" class="l3-progress" hidden>
+              <div class="l3-stagebar"><div id="l3Bar" class="l3-bar"></div></div>
+              <div class="l3-status"><span id="l3Stage">Submitting…</span><span id="l3Elapsed"></span></div>
+              <a id="l3Result" class="l3-result" href="#" hidden>⬇ Download result</a>
+              <button id="l3Dismiss" class="l3-dismiss" hidden>Dismiss</button>
+            </div>
+          </div>
+          <div class="step-cta"><button type="button" class="step-next">Next →</button></div>
+        </div>
+      </section>
+
+      <!-- STEP · Caption style -->
+      <section class="step" id="step-style" data-step="style">
+        <button type="button" class="step-head">
+          <span class="step-badge">4</span>
+          <span class="step-titles"><span class="step-title">Caption style</span><span class="step-sum" id="sum-style">Font, size &amp; colors of the burned-in captions</span></span>
+          <span class="step-chev" aria-hidden="true">▾</span>
+        </button>
+        <div class="step-body">
+          <div class="step-scroll">
+            <div class="render-row">
+              <label class="sel">Font
+                <select id="fontSel">
+                  <option value="dejavu">Sans (DejaVu)</option>
+                  <option value="poppins">Poppins</option>
+                  <option value="ptserif">PT Serif</option>
+                  <option value="anton">Anton</option>
+                  <option value="bebas">Bebas Neue</option>
+                  <option value="pacifico">Pacifico</option>
+                </select>
+              </label>
+              <label class="sel">Size <span id="sizeVal" class="range-val">5.5%</span>
+                <input type="range" id="sizeSel" class="range" min="3" max="9" step="0.1" value="5.5" />
+              </label>
+            </div>
+            <div class="render-row">
+              <label class="sel">Background
+                <select id="bgSel">
+                  <option value="box" selected>Semi-transparent</option>
+                  <option value="solid">Solid</option>
+                  <option value="none">None (outline)</option>
+                </select>
+              </label>
+              <label class="sel">Box color
+                <input type="color" id="bgColorSel" value="#000000" />
+              </label>
+              <label class="sel">Text color
+                <input type="color" id="colorSel" value="#ffffff" />
+              </label>
+            </div>
+          </div>
+          <div class="step-cta"><button type="button" class="step-next">Next →</button></div>
+        </div>
+      </section>
+
+      <!-- STEP · Review & export -->
+      <section class="step" id="step-export" data-step="export">
+        <button type="button" class="step-head">
+          <span class="step-badge">5</span>
+          <span class="step-titles"><span class="step-title">Review &amp; export</span><span class="step-sum" id="sum-export">Burn everything into a shareable MP4</span></span>
+          <span class="step-chev" aria-hidden="true">▾</span>
+        </button>
+        <div class="step-body">
+          <div class="step-scroll">
+            <div id="chosenTemplate" class="chosen-template"></div>
+            <div id="exportSource" class="hint" style="margin:2px 0 10px"></div>
+            <div class="render-row">
+              <label class="sel">Quality
+                <select id="qualitySel">
+                  <option value="fast">Fastest</option>
+                  <option value="balanced" selected>Balanced</option>
+                  <option value="high">High</option>
+                </select>
+              </label>
+              <label class="sel">Resolution
+                <select id="resSel">
+                  <option value="480">480p</option>
+                  <option value="720">720p</option>
+                  <option value="1080" selected>1080p</option>
+                  <option value="2160">4K</option>
+                </select>
+              </label>
+            </div>
+            <button id="exportBtn">⬇ Burn &amp; Export MP4</button>
+            <div id="exportMsg" class="msg"></div>
+            <div id="progressWrap" class="progress-wrap" hidden>
+              <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+              <div class="progress-label"><span id="progressStage">Starting…</span><span id="progressPct">0%</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </div>
   </div>
 </section>
