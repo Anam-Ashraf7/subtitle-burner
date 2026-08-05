@@ -199,7 +199,7 @@ select.tin { cursor: pointer; }
 /* ---------- GUIDED STEPPER ---------- */
 /* The whole step list is a fixed-height panel that fits the screen: collapsed steps
    keep their height, the open step flexes to fill the rest and scrolls inside. */
-.stepper { min-width: 0; display: flex; flex-direction: column; gap: 12px; position: sticky; top: 84px; max-height: calc(100vh - 104px); overflow-y: auto; }
+.stepper { min-width: 0; display: flex; flex-direction: column; gap: 12px; position: sticky; top: 84px; height: calc(100vh - 104px); overflow-y: auto; }
 /* Apply & save is global (not inside a step) so it's reachable from any step. */
 #applybarGlobal { flex: none; position: sticky; top: 0; z-index: 8; }
 .step { flex: none; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(180deg, #1c1c1c, #171717); overflow: hidden; transition: border-color .2s, box-shadow .2s; }
@@ -222,9 +222,11 @@ select.tin { cursor: pointer; }
 .step-head { flex: none; }
 .step.active .step-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 .step-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 4px; margin-right: -4px; display: flex; flex-direction: column; gap: 14px; }
-/* List-heavy steps get a comfortable floor so a few rows are always visible even
-   on short windows (they still grow to fill taller screens). */
-#step-script .step-scroll, #step-faces .step-scroll, #step-voices .step-scroll { min-height: 520px; }
+/* List-heavy steps get a small floor so a couple of rows are always visible even
+   on short windows; on taller screens they flex to fill the panel and scroll
+   inside. A hard-coded tall min-height would overflow the panel and spawn a second
+   scrollbar (the bottom rows then fall off-screen), so keep the floor modest. */
+#step-script .step-scroll, #step-faces .step-scroll, #step-voices .step-scroll { min-height: 180px; }
 .step-cta { flex: none; display: flex; justify-content: flex-end; margin-top: 14px; }
 .step-next { background: var(--red); color: #fff; padding: 10px 22px; border-radius: 10px; font-weight: 800; font-size: 13px; box-shadow: 0 5px 16px rgba(229,9,20,.32); transition: background .15s, transform .1s; }
 .step-next:hover { background: var(--red-hi); }
@@ -393,7 +395,7 @@ select.tin { cursor: pointer; }
 @media (max-width: 960px) {
   .studio-grid { grid-template-columns: 1fr; }
   .preview-pane { position: static; }
-  .stepper { position: static; max-height: none; overflow: visible; }
+  .stepper { position: static; height: auto; max-height: none; overflow: visible; }
   .step.active .step-body { max-height: 70vh; }
   .card { width: 200px; }
 }

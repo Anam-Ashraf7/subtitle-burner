@@ -1342,9 +1342,11 @@ function setupTrimDrag() {
       try { h.setPointerCapture(ev.pointerId); } catch { /* ignore */ }
       h.classList.add('dragging');
       const onMove = (e) => {
-        const t = timeAt(e.clientX), dur = videoDur(), MIN = 0.5;
+        // Snap to whole seconds so the label ("0:41") is EXACTLY what gets trimmed —
+        // no fractional drift between what you select and what renders.
+        const t = Math.round(timeAt(e.clientX)), dur = videoDur(), MIN = 1;
         if (role === 'start') state.l3Trim.start = Math.max(0, Math.min(t, state.l3Trim.end - MIN));
-        else state.l3Trim.end = Math.min(dur, Math.max(t, state.l3Trim.start + MIN));
+        else state.l3Trim.end = Math.max(state.l3Trim.start + MIN, Math.min(t, Math.floor(dur)));
         renderTrimRange();
         try { video.currentTime = role === 'start' ? state.l3Trim.start : state.l3Trim.end; } catch { /* not ready */ }
       };
