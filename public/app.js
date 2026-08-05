@@ -1464,9 +1464,12 @@ $('#level3Btn').addEventListener('click', async () => {
     setMsg('#level3Msg', `${bad.length} line(s) outside ±10% of the original length (needed for lip-sync): ${eg}${bad.length > 3 ? '…' : ''}`, 'err');
     return;
   }
-  const start = state.l3Trim.on ? Math.max(0, Math.round(state.l3Trim.start)) : 0;
-  const trim = state.l3Trim.on ? Math.max(1, Math.round(state.l3Trim.end - state.l3Trim.start)) : 0;
-  const end = start + trim;
+  // Round the window OUT to whole seconds so a fractional end (15.1s, 15.2s, 15.9s …)
+  // always covers the full last line: start floors down, end ceils up. ffmpeg caps -t at
+  // the real video length, so ceiling slightly past the end is harmless.
+  const start = state.l3Trim.on ? Math.max(0, Math.floor(state.l3Trim.start)) : 0;
+  const end = state.l3Trim.on ? Math.max(start + 1, Math.ceil(state.l3Trim.end)) : 0;
+  const trim = state.l3Trim.on ? end - start : 0;
   const ok = confirm(
     `Generate a face-swap + dub video for ${chars.length} character${chars.length === 1 ? '' : 's'} (all swapped)` +
     (trim ? ` — the ${fmtClock(start)}–${fmtClock(end)} segment only` : '') +
