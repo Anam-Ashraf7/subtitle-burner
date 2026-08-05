@@ -4,5 +4,29 @@
     "type": "3",
     "name": "The Democrats Are Panicking",
     "transcribe": true
+  },
+  {
+    "video": "boy_gas_mask.mp4",
+    "type": "2",
+    "name": "Boy Gas Mask",
+    "transcribe": false
+  },
+  {
+    "video": "diver_convo.mp4",
+    "type": "2",
+    "name": "Diver Convo",
+    "transcribe": false
+  },
+  {
+    "video": "astronaut_convo.mp4",
+    "type": "2",
+    "name": "Astronaut Convo",
+    "transcribe": false
+  },
+  {
+    "video": "motorcyclist_convo.mp4",
+    "type": "2",
+    "name": "Motorcyclist Convo",
+    "transcribe": false
   }
 ]
